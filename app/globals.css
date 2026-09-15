@@ -1,0 +1,124 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "../vendor/shadcn-tailwind-4.13.0.css";
+
+@font-face {
+  font-family: "IBM Plex Sans Arabic";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../node_modules/@ibm/plex/IBM-Plex-Sans-Arabic/fonts/complete/woff2/IBMPlexSansArabic-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Sans Arabic";
+  font-style: normal;
+  font-weight: 600 700;
+  font-display: swap;
+  src: url("../node_modules/@ibm/plex/IBM-Plex-Sans-Arabic/fonts/complete/woff2/IBMPlexSansArabic-SemiBold.woff2") format("woff2");
+}
+
+:root {
+  --background: #f3f7fb; --foreground: #12263a; --card: #ffffff; --card-foreground: #12263a;
+  --popover: #ffffff; --popover-foreground: #12263a; --primary: #0b2f55; --primary-foreground: #ffffff;
+  --secondary: #edf6fc; --secondary-foreground: #245b8a; --muted: #f1f5f9; --muted-foreground: #64748b;
+  --accent: #e8f2fa; --accent-foreground: #0b2f55; --destructive: #b42318; --border: #dbe5ef;
+  --input: #cbd9e6; --ring: #2f6fa8; --radius: 0.625rem;
+}
+@theme inline {
+  --color-background: var(--background); --color-foreground: var(--foreground); --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground); --color-popover: var(--popover); --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary); --color-primary-foreground: var(--primary-foreground); --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground); --color-muted: var(--muted); --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent); --color-accent-foreground: var(--accent-foreground); --color-destructive: var(--destructive);
+  --color-border: var(--border); --color-input: var(--input); --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px); --radius-md: calc(var(--radius) - 2px); --radius-lg: var(--radius); --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: "IBM Plex Sans Arabic", "Noto Sans Arabic", Tahoma, Arial, sans-serif;
+}
+* { border-color: var(--border); }
+body { margin: 0; background: var(--background); color: var(--foreground); font-family: var(--font-sans); }
+button, input, select, textarea { font: inherit; }
+
+.pdf-sheet {
+  width: min(100%, 794px);
+  aspect-ratio: 210 / 297;
+  min-height: 1123px;
+  margin: 0 auto;
+  overflow: hidden;
+  background: #fff;
+  color: #172b3d;
+  padding: 38px 42px 30px;
+  box-shadow: 0 8px 30px rgb(15 42 67 / 12%);
+  font-family: "IBM Plex Sans Arabic", Tahoma, Arial, sans-serif;
+}
+.pdf-header { display: grid; grid-template-columns: 68px 1fr auto; align-items: center; gap: 14px; }
+.pdf-logo { display: grid; height: 46px; place-items: center; border-radius: 4px; background: #0b2f55; color: #fff; font-size: 20px; font-weight: 700; }
+.pdf-title h2 { margin: 0; color: #0b2f55; font-size: 22px; font-weight: 700; }
+.pdf-title p { margin: 4px 0 0; color: #64788a; font-size: 11px; }
+.pdf-reference { direction: ltr; color: #0b2f55; font-size: 11px; }
+.pdf-blue-line { height: 3px; margin: 16px 0 12px; background: #0b2f55; }
+.pdf-info-grid { display: grid; grid-template-columns: repeat(4, 1fr); }
+.pdf-info-grid > div { min-height: 57px; border: 1px solid #dbe6ef; background: #f9fbfd; padding: 9px; }
+.pdf-info-grid small { display: block; color: #64788a; font-size: 10px; }
+.pdf-info-grid strong { display: block; margin-top: 5px; color: #0b2f55; font-size: 11px; line-height: 1.35; }
+.pdf-legal { margin-top: 10px; border: 1px solid #dce7f0; background: #f0f7fc; padding: 10px 12px; }
+.pdf-legal h3, .pdf-description h3 { margin: 0 0 4px; color: #0b2f55; font-size: 12px; font-weight: 700; }
+.pdf-legal p { margin: 0; font-size: 11px; line-height: 1.6; }
+.pdf-delivery { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 18px; margin-top: 10px; border: 1px solid #dbe6ef; background: #f9fbfd; padding: 10px 12px; font-size: 10px; }
+.pdf-delivery strong { color: #17613a; }
+.pdf-description { margin-top: 12px; }
+.pdf-description h3 { border-bottom: 1px solid #dbe6ef; padding-bottom: 7px; }
+.pdf-image-frame { display: grid; height: 360px; place-items: center; overflow: hidden; border: 1px solid #dbe6ef; background: #fcfdfe; padding: 7px; }
+.pdf-image-frame img { display: block; max-height: 100%; max-width: 100%; object-fit: contain; }
+.pdf-image-placeholder { display: grid; place-items: center; gap: 8px; color: #8a9bab; font-size: 11px; }
+.pdf-image-placeholder svg { height: 28px; width: 28px; }
+.pdf-footer { margin-top: 13px; border-top: 1px solid #0b2f55; padding-top: 9px; color: #60758a; font-size: 9px; }
+.pdf-footer p { margin: 0 0 7px; }
+.pdf-footer div { display: flex; justify-content: space-between; gap: 16px; }
+.pdf-footer span:first-child { direction: ltr; }
+
+@media (max-width: 760px) {
+  .pdf-sheet { min-height: 0; padding: 22px; }
+  .pdf-header { grid-template-columns: 48px 1fr; }
+  .pdf-reference { grid-column: 1 / -1; }
+  .pdf-title h2 { font-size: 15px; }
+  .pdf-info-grid { grid-template-columns: repeat(2, 1fr); }
+  .pdf-image-frame { height: 230px; }
+}
+
+@media print {
+  @page { size: A4; margin: 10mm 12mm; }
+  body { background: #fff; }
+  .pdf-sheet { width: 186mm; min-height: 277mm; margin: 0; padding: 0; box-shadow: none; }
+}
+
+.verify-page { min-height: 100vh; background: #eef4f9; padding: 32px 16px; }
+.verify-card { width: min(100%, 840px); margin: 0 auto; overflow: hidden; border: 1px solid #d7e3ed; border-radius: 18px; background: #fff; padding: 28px; box-shadow: 0 12px 35px rgb(21 54 84 / 8%); }
+.verify-header { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #e1eaf2; padding-bottom: 20px; }
+.verify-state { display: flex; align-items: center; gap: 14px; margin-top: 22px; border: 1px solid; border-radius: 12px; padding: 18px; }
+.verify-state h1 { margin: 0; font-size: 20px; font-weight: 700; }
+.verify-state p { margin: 4px 0 0; font-size: 14px; }
+.verify-state-green { border-color: #b9dec8; background: #effaf3; color: #17613a; }
+.verify-state-orange { border-color: #f0d49a; background: #fff9eb; color: #8a5712; }
+.verify-state-red { border-color: #efc1bc; background: #fff4f3; color: #9f2d23; }
+.verify-grid { display: grid; grid-template-columns: repeat(2, 1fr); margin-top: 20px; overflow: hidden; border: 1px solid #dce6ef; border-radius: 12px; }
+.verify-grid > div { min-height: 72px; border-bottom: 1px solid #e4ecf3; padding: 13px 15px; }
+.verify-grid > div:nth-child(odd) { border-left: 1px solid #e4ecf3; }
+.verify-grid small { display: block; color: #6a7e90; font-size: 12px; }
+.verify-grid strong { display: block; margin-top: 6px; color: #15344f; font-size: 15px; }
+.fingerprint-box { display: flex; gap: 12px; margin-top: 18px; border: 1px solid #cfe0ef; border-radius: 12px; background: #f2f8fc; padding: 16px; color: #245b8a; }
+.fingerprint-box code { display: block; margin: 3px 0; font-weight: 700; letter-spacing: .08em; }
+.fingerprint-box span { color: #64788a; font-size: 12px; }
+.verify-upload { margin-top: 18px; border-top: 1px solid #e2eaf2; padding-top: 20px; }
+.verify-upload h2, .private-verification h2 { margin: 0; color: #15344f; font-size: 17px; font-weight: 700; }
+.verify-upload p, .private-verification p { margin: 4px 0 0; color: #64788a; font-size: 14px; line-height: 1.6; }
+.verify-result { margin-top: 12px !important; border-radius: 8px; padding: 10px 12px; font-weight: 600; }
+.verify-result.success { background: #effaf3; color: #17613a; }
+.verify-result.danger { background: #fff4f3; color: #9f2d23; }
+.private-verification { display: flex; align-items: center; gap: 14px; margin-top: 20px; border: 1px solid #dce6ef; border-radius: 12px; padding: 16px; }
+.verify-domain { margin-top: 22px; border-top: 1px solid #e2eaf2; padding-top: 17px; color: #718497; font-size: 12px; line-height: 1.7; text-align: center; }
+@media (max-width: 640px) {
+  .verify-card { padding: 19px; border-radius: 13px; }
+  .verify-grid { grid-template-columns: 1fr; }
+  .verify-grid > div:nth-child(odd) { border-left: 0; }
+  .private-verification { align-items: flex-start; flex-wrap: wrap; }
+}
