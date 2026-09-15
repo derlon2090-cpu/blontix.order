@@ -4,7 +4,7 @@ declare namespace Cloudflare {
     BUCKET?: R2Bucket;
     PDF_SIGNING_SERVICE_URL?: string;
     PDF_SIGNING_SERVICE_TOKEN?: string;
-    PHONE_VERIFICATION_SERVICE_URL?: string;
-    PHONE_VERIFICATION_SERVICE_TOKEN?: string;
+    DOCUMENTS_ACCESS_PASSWORD_HASH?: string;
+    SESSION_SECRET?: string;
   }
 }

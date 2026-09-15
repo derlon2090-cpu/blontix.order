@@ -30,7 +30,12 @@ export const orderDocuments = sqliteTable(
     pdfSha256: text("pdf_sha256").notNull().default(""),
     templateVersion: text("template_version").notNull().default("AP-DOC-V1"),
     brandingVersion: text("branding_version").notNull().default("AP-BRAND-V1"),
+    logoAssetId: text("logo_asset_id").notNull().default("advanced-pro-wordmark-v1"),
     logoAssetSha256: text("logo_asset_sha256").notNull().default(""),
+    logoAssetKey: text("logo_asset_key").notNull().default(""),
+    rendererVersion: text("renderer_version").notNull().default("AP-PDF-ENGINE-1.0"),
+    renderInputKey: text("render_input_key").notNull().default(""),
+    renderInputSha256: text("render_input_sha256").notNull().default(""),
     lifecycleStatus: text("lifecycle_status").notNull().default("final"),
     supersedesDocumentId: text("supersedes_document_id"),
     reissueReason: text("reissue_reason"),
@@ -49,6 +54,22 @@ export const orderDocuments = sqliteTable(
     uniqueIndex("idx_order_documents_verification_id").on(table.verificationId),
     uniqueIndex("idx_order_documents_idempotency_key").on(table.idempotencyKey),
     index("idx_order_documents_status_created").on(table.lifecycleStatus, table.createdAt),
+  ],
+);
+
+export const documentVerificationTokens = sqliteTable(
+  "document_verification_tokens",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id").notNull(),
+    token: text("token").notNull(),
+    status: text("status").notNull().default("revoked"),
+    revokedAt: text("revoked_at").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_document_verification_tokens_token").on(table.token),
+    index("idx_document_verification_tokens_document").on(table.documentId, table.createdAt),
   ],
 );
 
@@ -86,4 +107,26 @@ export const verificationEvents = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (table) => [index("idx_verification_events_document_created").on(table.documentId, table.createdAt)],
+);
+
+export const accessSessions = sqliteTable(
+  "access_sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    passwordHashFingerprint: text("password_hash_fingerprint").notNull(),
+    createdAt: text("created_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    revokedAt: text("revoked_at"),
+  },
+  (table) => [index("idx_access_sessions_expires_at").on(table.expiresAt)],
+);
+
+export const accessLoginAttempts = sqliteTable(
+  "access_login_attempts",
+  {
+    subjectHash: text("subject_hash").primaryKey(),
+    failedCount: integer("failed_count").notNull().default(0),
+    lockedUntil: text("locked_until"),
+    updatedAt: text("updated_at").notNull(),
+  },
 );

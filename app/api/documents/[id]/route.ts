@@ -1,10 +1,10 @@
 import { env } from "cloudflare:workers";
 import { appendDocumentAudit } from "@/lib/audit";
+import { requireDocumentSession } from "@/lib/access";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actorId = request.headers.get("oai-authenticated-user-id");
-    if (!actorId) return Response.json({ error: "يلزم تسجيل الدخول." }, { status: 401 });
+    const actorId = await requireDocumentSession(request);
     if (!env.DB) throw new Error("قاعدة البيانات غير متاحة.");
     const { id } = await context.params;
     const row = await env.DB.prepare(
@@ -13,7 +13,6 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     if (!row) return Response.json({ error: "المستند غير موجود." }, { status: 404 });
     await appendDocumentAudit(env.DB, id, "snapshot_viewed", "success", actorId);
     const snapshot = JSON.parse(String(row.snapshot_json));
-    snapshot.customerPhone = snapshot.maskedPhone;
     return Response.json({
       snapshot,
       snapshotHash: row.snapshot_hash,
@@ -26,6 +25,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       immutable: row.status === "final",
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "تعذر تحميل Snapshot." }, { status: 500 });
+    const message = error instanceof Error ? error.message : "تعذر تحميل Snapshot.";
+    return Response.json({ error: message === "AUTH_REQUIRED" ? "يلزم تسجيل الدخول." : message }, { status: message === "AUTH_REQUIRED" ? 401 : 500, headers: { "Cache-Control": "no-store" } });
   }
 }

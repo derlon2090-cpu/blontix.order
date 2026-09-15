@@ -7,6 +7,8 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     "Cache-Control": "no-store",
     "X-Robots-Tag": "noindex, nofollow, noarchive",
     "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
   };
   try {
     if (!env.DB) throw new Error("UNAVAILABLE");

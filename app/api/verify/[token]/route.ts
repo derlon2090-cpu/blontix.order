@@ -8,6 +8,7 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
     "X-Robots-Tag": "noindex, nofollow, noarchive",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
   };
   try {
     if (!env.DB) throw new Error("خدمة التحقق غير متاحة.");
@@ -19,11 +20,15 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
     }
     const row = await env.DB.prepare(
       `SELECT id, order_number, product_name, price, masked_phone, document_reference,
-        document_version, finalized_at, lifecycle_status, verification_id, pdf_sha256,
+        document_version, finalized_at, lifecycle_status, verification_id, pdf_sha256, snapshot_hash,
         signature_status, timestamp_status
        FROM order_documents WHERE verification_token = ?`
     ).bind(token).first<Record<string, unknown>>();
     if (!row) {
+      const revoked = await env.DB.prepare(
+        "SELECT id FROM document_verification_tokens WHERE token = ? AND status = 'revoked'"
+      ).bind(token).first();
+      if (revoked) return Response.json({ status: "revoked" }, { status: 410, headers });
       await recordVerification(null, "not_found");
       return Response.json({ status: "not_found" }, { status: 404, headers });
     }
@@ -43,11 +48,9 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
       documentVersion: row.document_version,
       latestVersion: latest?.latest_version ?? row.document_version,
       issuedAt: row.finalized_at,
-      maskedPhone: row.masked_phone,
       verificationId: row.verification_id,
       documentFingerprint: shortFingerprint(String(row.pdf_sha256)),
-      signatureStatus: row.signature_status,
-      timestampStatus: row.timestamp_status,
+      snapshotFingerprint: shortFingerprint(String(row.snapshot_hash)),
     }, { headers });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";

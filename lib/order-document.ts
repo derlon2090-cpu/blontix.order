@@ -26,6 +26,9 @@ export type OrderSnapshot = {
   descriptionVersion: string;
   templateVersion: string;
   brandingVersion: string;
+  logoAssetId: string;
+  logoAssetSha256: string;
+  rendererVersion: string;
   paymentStatus: "paid";
   consentStatus: "approved";
   deliveryStatus: "delivered";
@@ -52,6 +55,7 @@ export type OrderDocumentRow = {
   snapshotHash: string;
   pdfSha256?: string;
   verificationId?: string;
+  verificationUrl?: string;
   templateVersion?: string;
   signatureStatus?: string;
   timestampStatus?: string;
@@ -82,6 +86,6 @@ export async function sha256Hex(value: string) {
 }
 
 export async function sha256Bytes(value: Uint8Array) {
-  const digest = await crypto.subtle.digest("SHA-256", value);
+  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

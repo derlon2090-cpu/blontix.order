@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "مستندات توثيق الطلبات",
+  title: "blontix | مستندات توثيق الطلبات",
   description: "إنشاء وحفظ مستندات PDF قانونية ثابتة لتوثيق الطلبات الرقمية.",
-  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+  icons: { icon: "/blontix-logo-v1.png", shortcut: "/blontix-logo-v1.png" },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

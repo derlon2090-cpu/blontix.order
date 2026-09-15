@@ -51,7 +51,8 @@ button, input, select, textarea { font: inherit; }
   font-family: "IBM Plex Sans Arabic", Tahoma, Arial, sans-serif;
 }
 .pdf-header { display: grid; grid-template-columns: 68px 1fr auto; align-items: center; gap: 14px; }
-.pdf-logo { display: grid; height: 46px; place-items: center; border-radius: 4px; background: #0b2f55; color: #fff; font-size: 20px; font-weight: 700; }
+.pdf-logo { display: grid; width: 60px; height: 60px; place-items: center; }
+.pdf-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .pdf-title h2 { margin: 0; color: #0b2f55; font-size: 22px; font-weight: 700; }
 .pdf-title p { margin: 4px 0 0; color: #64788a; font-size: 11px; }
 .pdf-reference { direction: ltr; color: #0b2f55; font-size: 11px; }
@@ -94,6 +95,14 @@ button, input, select, textarea { font: inherit; }
 .verify-page { min-height: 100vh; background: #eef4f9; padding: 32px 16px; }
 .verify-card { width: min(100%, 840px); margin: 0 auto; overflow: hidden; border: 1px solid #d7e3ed; border-radius: 18px; background: #fff; padding: 28px; box-shadow: 0 12px 35px rgb(21 54 84 / 8%); }
 .verify-header { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #e1eaf2; padding-bottom: 20px; }
+.verify-wordmark { display: flex; align-items: center; gap: 6px; color: #0b2f55; font-size: 16px; direction: ltr; }
+.verify-wordmark img { width: 44px; height: 44px; object-fit: contain; }
+.verify-header h1 { margin: 0; color: #15344f; font-size: 20px; font-weight: 700; }
+.verify-header p { margin: 3px 0 0; color: #6a7e90; font-size: 12px; }
+.verify-value { display: flex; align-items: center; gap: 5px; }
+.verify-found { display: flex; gap: 12px; margin-top: 18px; border: 1px solid #b9dec8; border-radius: 12px; background: #effaf3; padding: 16px; color: #17613a; }
+.verify-found p { margin: 5px 0 0; color: #496f58; font-size: 13px; line-height: 1.6; }
+.verify-master-download { display: flex; width: 100%; margin-top: 18px; background: #0b2f55; }
 .verify-state { display: flex; align-items: center; gap: 14px; margin-top: 22px; border: 1px solid; border-radius: 12px; padding: 18px; }
 .verify-state h1 { margin: 0; font-size: 20px; font-weight: 700; }
 .verify-state p { margin: 4px 0 0; font-size: 14px; }
@@ -109,16 +118,19 @@ button, input, select, textarea { font: inherit; }
 .fingerprint-box code { display: block; margin: 3px 0; font-weight: 700; letter-spacing: .08em; }
 .fingerprint-box span { color: #64788a; font-size: 12px; }
 .verify-upload { margin-top: 18px; border-top: 1px solid #e2eaf2; padding-top: 20px; }
-.verify-upload h2, .private-verification h2 { margin: 0; color: #15344f; font-size: 17px; font-weight: 700; }
-.verify-upload p, .private-verification p { margin: 4px 0 0; color: #64788a; font-size: 14px; line-height: 1.6; }
+.verify-upload h2 { margin: 0; color: #15344f; font-size: 17px; font-weight: 700; }
+.verify-upload p { margin: 4px 0 0; color: #64788a; font-size: 14px; line-height: 1.6; }
 .verify-result { margin-top: 12px !important; border-radius: 8px; padding: 10px 12px; font-weight: 600; }
 .verify-result.success { background: #effaf3; color: #17613a; }
 .verify-result.danger { background: #fff4f3; color: #9f2d23; }
-.private-verification { display: flex; align-items: center; gap: 14px; margin-top: 20px; border: 1px solid #dce6ef; border-radius: 12px; padding: 16px; }
 .verify-domain { margin-top: 22px; border-top: 1px solid #e2eaf2; padding-top: 17px; color: #718497; font-size: 12px; line-height: 1.7; text-align: center; }
+.login-page { display: grid; min-height: 100vh; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 0%, #d6f3f9 0, #edf6fa 38%, #f3f7fb 75%); }
+.login-card { width: min(100%, 390px); border: 1px solid #d7e3ed; border-radius: 20px; background: #fff; padding: 36px; box-shadow: 0 18px 48px rgb(21 54 84 / 12%); text-align: center; }
+.login-logo { display: block; width: 90px; height: 90px; margin: 0 auto 12px; object-fit: contain; }
+.login-card h1 { margin: 0; color: #0b2f55; font-size: 27px; font-weight: 700; direction: ltr; }
+.login-card > p { margin: 5px 0 0; color: #64788a; font-size: 15px; }
 @media (max-width: 640px) {
   .verify-card { padding: 19px; border-radius: 13px; }
   .verify-grid { grid-template-columns: 1fr; }
   .verify-grid > div:nth-child(odd) { border-left: 0; }
-  .private-verification { align-items: flex-start; flex-wrap: wrap; }
 }

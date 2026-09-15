@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import regularFontUrl from "@ibm/plex/IBM-Plex-Sans-Arabic/fonts/complete/woff/IBMPlexSansArabic-Regular.woff?url";
 import semiboldFontUrl from "@ibm/plex/IBM-Plex-Sans-Arabic/fonts/complete/woff/IBMPlexSansArabic-SemiBold.woff?url";
 import type { OrderSnapshot } from "./order-document";
+import { shortFingerprint } from "./security";
 
 const navy = rgb(11 / 255, 47 / 255, 85 / 255);
 const blue = rgb(47 / 255, 111 / 255, 168 / 255);
@@ -69,12 +70,14 @@ export async function generateOrderPdf(args: {
   reference: string;
   generatedAt: string;
   imageBytes: Uint8Array;
+  logoBytes: Uint8Array;
   origin: string;
   verificationUrl: string;
   verificationId: string;
   documentVersion: number;
+  snapshotHash: string;
 }) {
-  const { snapshot, reference, generatedAt, imageBytes, origin, verificationUrl, verificationId, documentVersion } = args;
+  const { snapshot, reference, generatedAt, imageBytes, logoBytes, origin, verificationUrl, verificationId, documentVersion, snapshotHash } = args;
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const [regularBytes, semiboldBytes] = await Promise.all([
@@ -84,14 +87,14 @@ export async function generateOrderPdf(args: {
   const regular = await pdf.embedFont(regularBytes, { subset: true });
   const semibold = await pdf.embedFont(semiboldBytes, { subset: true });
   const page = pdf.addPage([595.28, 841.89]);
+  const logo = await pdf.embedPng(logoBytes);
 
   page.drawRectangle({ x: 0, y: 0, width: 595.28, height: 841.89, color: rgb(1, 1, 1) });
-  page.drawText("AP", { x: 145, y: 350, size: 235, font: semibold, color: navy, opacity: 0.045 });
-  page.drawRectangle({ x: 501, y: 779, width: 60, height: 35, color: navy });
-  page.drawText("AP", { x: 516, y: 788, size: 17, font: semibold, color: rgb(1, 1, 1) });
-  drawRtl(page, "إقرار شراء وتسليم منتج رقمي", 488, 796, semibold, 16, navy);
+  page.drawImage(logo, { x: 192, y: 360, width: 206, height: 206, opacity: 0.04 });
+  page.drawImage(logo, { x: 501, y: 775, width: 60, height: 60 });
+  drawRtl(page, "إقرار شراء وتسليم منتج رقمي", 489, 796, semibold, 16, navy);
   page.drawText(reference, { x: 34, y: 797, size: 8, font: semibold, color: navy });
-  drawRtl(page, `تاريخ الإصدار: ${new Date(generatedAt).toLocaleString("ar-SA")}`, 488, 781, regular, 7.5, muted);
+  drawRtl(page, `تاريخ الإصدار: ${new Date(generatedAt).toLocaleString("ar-SA")}`, 489, 781, regular, 7.5, muted);
   page.drawRectangle({ x: 34, y: 766, width: 527, height: 2, color: navy });
 
   const col = 527 / 4;
@@ -103,7 +106,7 @@ export async function generateOrderPdf(args: {
   ];
   const secondRow = [
     ["اسم العميل", snapshot.customerName],
-    ["رقم الجوال", snapshot.maskedPhone],
+    ["رقم الجوال", snapshot.customerPhone],
     ["حالة الدفع والموافقة", "مدفوع · تمت الموافقة"],
     ["حالة التسليم", "تم التسليم"],
   ];
@@ -143,9 +146,11 @@ export async function generateOrderPdf(args: {
   page.drawImage(qrImage, { x: 468, y: 272, width: 72, height: 72 });
   page.drawText(reference, { x: 460, y: 254, size: 5.8, font: semibold, color: navy });
   page.drawText(`V${documentVersion} · ${verificationId}`, { x: 460, y: 242, size: 5.6, font: regular, color: muted });
+  drawRtl(page, "بصمة بيانات المستند", 552, 231, regular, 5.7, muted);
+  page.drawText(shortFingerprint(snapshotHash), { x: 460, y: 220, size: 5.4, font: semibold, color: navy });
   wrapRtl("يمكن التحقق من أصالة المستند ومطابقته للنسخة المسجلة إلكترونيًا.", regular, 5.9, 94)
     .slice(0, 3)
-    .forEach((item, index) => drawRtl(page, item, 552, 224 - index * 8, regular, 5.9, muted));
+    .forEach((item, index) => drawRtl(page, item, 552, 207 - index * 7, regular, 5.7, muted));
   page.drawText(new URL(verificationUrl).hostname, { x: 458, y: 195, size: 5.3, font: regular, color: navy });
 
   page.drawLine({ start: { x: 34, y: 166 }, end: { x: 561, y: 166 }, thickness: 0.7, color: navy });
@@ -153,11 +158,12 @@ export async function generateOrderPdf(args: {
   drawRtl(page, "للتحقق من صحة المستند، امسح رمز QR وتأكد أن الصفحة تفتح على النطاق الرسمي للمنصة.", 561, 136, regular, 6.6, muted);
   page.drawText(`Document Reference: ${reference} · V${documentVersion} · Verification ID: ${verificationId}`, { x: 34, y: 119, size: 6.2, font: regular, color: muted });
   page.drawText(`${reference} · V${documentVersion} · ${verificationId}`, { x: 198, y: 97, size: 6, font: semibold, color: navy, opacity: 0.78 });
+  for (let x = 34; x < 561; x += 26) page.drawRectangle({ x, y: 86, width: 13, height: 1.2, color: blue, opacity: 0.06 });
   drawRtl(page, `تاريخ ووقت الإنشاء: ${new Date(generatedAt).toLocaleString("ar-SA")} · GMT+3`, 561, 119, regular, 6.2, muted);
 
   pdf.setTitle(`Order Documentation ${reference}`);
   pdf.setSubject("Digital product purchase and delivery acknowledgment");
-  pdf.setCreator("Order Documentation Platform");
+  pdf.setCreator("blontix Order Documentation Platform");
   pdf.setCreationDate(new Date(generatedAt));
   return pdf.save();
 }

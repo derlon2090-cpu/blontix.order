@@ -15,6 +15,13 @@
       "when": 1789492153757,
       "tag": "0001_demonic_wendell_vaughn",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789496844025,
+      "tag": "0002_new_puppet_master",
+      "breakpoints": true
     }
   ]
 }

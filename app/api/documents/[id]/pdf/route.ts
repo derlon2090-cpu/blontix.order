@@ -1,10 +1,10 @@
 import { env } from "cloudflare:workers";
 import { appendDocumentAudit } from "@/lib/audit";
+import { requireDocumentSession } from "@/lib/access";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const actorId = request.headers.get("oai-authenticated-user-id");
-    if (!actorId) return new Response("يلزم تسجيل الدخول.", { status: 401 });
+    const actorId = await requireDocumentSession(request);
     if (!env.DB || !env.BUCKET) throw new Error("خدمة الملفات غير متاحة.");
     const { id } = await context.params;
     const row = await env.DB.prepare(
@@ -19,11 +19,12 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `${disposition}; filename="${row.document_reference}.pdf"`,
-        "Cache-Control": "private, max-age=31536000, immutable",
+        "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {
-    return new Response(error instanceof Error ? error.message : "تعذر تحميل PDF.", { status: 500 });
+    const message = error instanceof Error ? error.message : "تعذر تحميل PDF.";
+    return new Response(message === "AUTH_REQUIRED" ? "يلزم تسجيل الدخول." : message, { status: message === "AUTH_REQUIRED" ? 401 : 500, headers: { "Cache-Control": "no-store" } });
   }
 }

@@ -1,8 +1,8 @@
 import { env } from "cloudflare:workers";
+import { requireDocumentSession } from "@/lib/access";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
-  const actorId = request.headers.get("oai-authenticated-user-id");
-  if (!actorId) return Response.json({ error: "يلزم تسجيل الدخول." }, { status: 401 });
+  try { await requireDocumentSession(request); } catch { return Response.json({ error: "يلزم تسجيل الدخول." }, { status: 401 }); }
   if (!env.DB) return Response.json({ error: "قاعدة البيانات غير متاحة." }, { status: 500 });
   const { id } = await context.params;
   const document = await env.DB.prepare("SELECT id FROM order_documents WHERE id = ?").bind(id).first();
