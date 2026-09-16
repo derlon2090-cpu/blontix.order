@@ -12,7 +12,7 @@ import {settleStorageTasks} from '@/lib/storage-parallel';
 const TEMPLATE_VERSION = "BLONTIX-DOC-V2";
 const BRANDING_VERSION = "BLONTIX-BRAND-V1";
 const LOGO_ASSET_ID = "blontix-logo-v1";
-const RENDERER_VERSION = "AP-PDF-ENGINE-1.2";
+const RENDERER_VERSION = "AP-PDF-ENGINE-1.3";
 
 function clean(value: FormDataEntryValue | null, label: string) {
   const text = typeof value === "string" ? value.trim() : "";

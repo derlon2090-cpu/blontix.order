@@ -163,9 +163,6 @@ export async function generateOrderPdf(args: {
   wrapRtl("يمكن التحقق من أصالة المستند ومطابقته للنسخة المسجلة إلكترونيًا.", regular, 5.9, 94)
     .slice(0, 2)
     .forEach((item, index) => drawRtl(page, item, 552, 207 - index * 7, regular, 5.7, muted));
-  wrapRtl(new URL(verificationUrl).hostname, regular, 5.3, 94).slice(0, 2).forEach((item, index) => {
-    page.drawText(item, { x: 458, y: 194 - index * 7, size: 5.3, font: regular, color: navy });
-  });
 
   page.drawLine({ start: { x: 34, y: 166 }, end: { x: 561, y: 166 }, thickness: 0.7, color: navy });
   drawRtl(page, "هذا المستند تم إنشاؤه إلكترونيًا لتوثيق بيانات الطلب والشروط التي وافق عليها العميل قبل إتمام عملية الشراء.", 561, 149, regular, 7.1, muted);
