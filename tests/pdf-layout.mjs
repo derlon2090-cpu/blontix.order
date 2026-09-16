@@ -1,0 +1,42 @@
+if(process.env.NODE_ENV==='production'||process.env.RENDER==='true')throw new Error('Local PDF QA forbidden in production');
+import assert from 'node:assert/strict';
+import {mkdir,readFile,writeFile} from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
+import {pathToFileURL} from 'node:url';
+import {resolve} from 'node:path';
+import ts from 'typescript';
+import {generateOrderPdf} from '../lib/pdf.ts';
+import {pdfTextRuns} from '../lib/pdf-text.ts';
+import {documentFontkit} from '../lib/pdf-fontkit.ts';
+import {settleStorageTasks} from '../lib/storage-parallel.ts';
+import {CUSTOMER_DECLARATION,WARRANTY_TEXT,DIGITAL_POLICY} from '../lib/order-document.ts';
+const product='Google Gemini – رابط تفعيل عرض 18 شهرًا';
+const runs=pdfTextRuns(product);
+assert.ok(runs.some(run=>run.includes('Google Gemini')));
+assert.ok(runs.some(run=>run.includes('18')));
+assert.ok(!runs.some(run=>run.includes('81')));
+const numericFont=documentFontkit.create(new Uint8Array(await readFile('node_modules/@ibm/plex/IBM-Plex-Sans-Arabic/fonts/complete/woff/IBMPlexSansArabic-Regular.woff')));
+assert.equal(numericFont.layout('١٨').direction,'ltr','Arabic digits must not be shaped in reverse');
+assert.equal(numericFont.layout('رابط تفعيل').direction,'rtl');
+const finished=[];
+const start=performance.now();
+await assert.rejects(settleStorageTasks([
+  async()=>{throw new Error('upload failed');},
+  async()=>{await new Promise(resolve=>setTimeout(resolve,40));finished.push('late upload');},
+]),/upload failed/);
+assert.deepEqual(finished,['late upload'],'cleanup must wait for late uploads');
+let active=0,maxActive=0;
+await settleStorageTasks(Array.from({length:4},()=>async()=>{active++;maxActive=Math.max(active,maxActive);await new Promise(resolve=>setTimeout(resolve,30));active--;}));
+assert.equal(maxActive,4);
+const snapshot={orderNumber:'QA-1800',customerName:'عبدالله محمد',customerPhone:'0551234821',productName:product,price:'24.99',orderApprovedAt:'2026-09-16T12:00:00Z',deliveredAt:'2026-09-16T12:15:00Z',deliveryMethod:'واتساب',customerDeclaration:CUSTOMER_DECLARATION,warrantyText:WARRANTY_TEXT,digitalPolicy:DIGITAL_POLICY,imageContentType:'image/png'};
+const logo=new Uint8Array(await readFile('public/blontix-logo-v1.png'));
+const args={snapshot,reference:'bl-ORD-QA1800-V1',generatedAt:'2026-09-16T12:30:00Z',imageBytes:logo,logoBytes:logo,origin:'https://example.invalid',verificationUrl:'https://example.invalid/verify/isolated-pdf-qa',verificationId:'VRF-1800-ABCD',documentVersion:1,snapshotHash:'a'.repeat(64)};
+await mkdir('tmp/pdfs',{recursive:true});
+const oldSource=execFileSync('git',['show','HEAD:lib/pdf.ts'],{encoding:'utf8'});
+const compiled=ts.transpileModule(oldSource,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ES2022}}).outputText.replace('"./security"',JSON.stringify(pathToFileURL(resolve('lib/security.ts')).href));
+await writeFile('tmp/pdfs/baseline-renderer.mjs',compiled);
+const before=await import(pathToFileURL(resolve('tmp/pdfs/baseline-renderer.mjs')).href);
+await writeFile('tmp/pdfs/mixed-before.pdf',await before.generateOrderPdf(args));
+const pdfStart=performance.now();
+await writeFile('tmp/pdfs/mixed-after.pdf',await generateOrderPdf(args));
+console.log(JSON.stringify({result:'PASS',checks:['Latin name intact','18 not reversed','all pending uploads settled before cleanup','four independent storage tasks concurrent'],localPdfMs:Math.round(performance.now()-pdfStart),testMs:Math.round(performance.now()-start),runs}));

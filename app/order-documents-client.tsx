@@ -41,7 +41,7 @@ function PdfSheet({ data, reference = "bl-ORD-000000-V1" }: { data: PreviewData;
         <strong className="pdf-reference">{reference}</strong>
       </header>
       <div className="pdf-blue-line" />
-      <section className="pdf-info-grid">{info.map(([label, value]) => <div key={label}><small>{label}</small><strong>{value}</strong></div>)}</section>
+      <section className="pdf-info-grid">{info.map(([label, value]) => <div key={label}><small>{label}</small><strong><bdi dir="auto">{value}</bdi></strong></div>)}</section>
       {[
         ["إقرار العميل", CUSTOMER_DECLARATION],
         ["توضيح الضمان", WARRANTY_TEXT],
@@ -154,7 +154,7 @@ export default function OrderDocumentsClient() {
   };
 
   const confirmSubmission = async () => {
-    if (!pendingForm) return;
+    if (!pendingForm || submitting) return;
     setSubmitting(true);
     try {
       const response = await fetch("/api/documents", { method: "POST", body: pendingForm });
@@ -245,7 +245,7 @@ export default function OrderDocumentsClient() {
                   <p className="text-sm leading-6 text-[#52677a]">إقرار العميل، توضيح الضمان، سياسة المنتج الرقمي، حالة الدفع والموافقة والتسليم. تُخزّن جميعها حرفيًا داخل Snapshot المستند.</p>
                 </div>
                 <DialogFooter className="gap-2 border-t border-[#e1eaf2] pt-5 sm:col-span-2 sm:justify-start">
-                  <Button type="submit" disabled={submitting} className="bg-[#0b2f55] hover:bg-[#123f6d]">{submitting ? <Loader2 className="animate-spin" /> : <FileCheck2 />} اعتماد وإنشاء PDF</Button>
+                  <Button type="submit" disabled={submitting} className="bg-[#0b2f55] hover:bg-[#123f6d]">{submitting ? <Loader2 className="animate-spin" /> : <FileCheck2 />} {submitting ? "جارٍ إنشاء PDF والتحقق من حفظه…" : "اعتماد وإنشاء PDF"}</Button>
                   <Button type="button" variant="outline" onClick={showDraftPreview}><Eye /> معاينة المستند</Button>
                 </DialogFooter>
               </form>

@@ -1,9 +1,10 @@
-import fontkit from "@pdf-lib/fontkit";
+import {documentFontkit} from './pdf-fontkit';
 import { PDFDocument, PDFFont, PDFImage, PDFPage, rgb } from "pdf-lib";
 import QRCode from "qrcode";
 import { getFontBytes } from "@/lib/pdf-assets";
 import type { OrderSnapshot } from "./order-document";
 import { shortFingerprint } from "./security";
+import {pdfTextRuns} from './pdf-text';
 
 const navy = rgb(11 / 255, 47 / 255, 85 / 255);
 const blue = rgb(47 / 255, 111 / 255, 168 / 255);
@@ -12,16 +13,22 @@ const line = rgb(220 / 255, 230 / 255, 239 / 255);
 const ink = rgb(25 / 255, 43 / 255, 61 / 255);
 const muted = rgb(90 / 255, 108 / 255, 124 / 255);
 
-function visualRtl(input: string) {
-  if (!/[\u0600-\u06ff]/.test(input)) return input;
-  return input.replace(/[0-9٠-٩۰-۹][0-9٠-٩۰-۹:/.،-]*/g, (run) =>
-    run.split("").reverse().join("")
-  );
+const measurements=new WeakMap<PDFFont,Map<string,number>>();
+function textWidth(text:string,font:PDFFont,size:number){
+  let cache=measurements.get(font);
+  if(!cache){cache=new Map();measurements.set(font,cache);}
+  const key=`${size}:${text}`;
+  let width=cache.get(key);
+  if(width===undefined){width=pdfTextRuns(text).reduce((sum,run)=>sum+font.widthOfTextAtSize(run,size),0);cache.set(key,width);}
+  return width;
 }
 
 function drawRtl(page: PDFPage, text: string, xRight: number, y: number, font: PDFFont, size: number, color = ink) {
-  const visual = visualRtl(text);
-  page.drawText(visual, { x: xRight - font.widthOfTextAtSize(visual, size), y, font, size, color });
+  let x=xRight-textWidth(text,font,size);
+  for(const run of pdfTextRuns(text)){
+    page.drawText(run,{x,y,font,size,color});
+    x+=font.widthOfTextAtSize(run,size);
+  }
 }
 
 function wrapRtl(text: string, font: PDFFont, size: number, maxWidth: number) {
@@ -29,18 +36,18 @@ function wrapRtl(text: string, font: PDFFont, size: number, maxWidth: number) {
   const lines: string[] = [];
   let current = "";
   for (const word of words) {
-    if (font.widthOfTextAtSize(visualRtl(word), size) > maxWidth) {
+    if (textWidth(word,font,size) > maxWidth) {
       if (current) { lines.push(current); current = ""; }
       for (const character of word) {
         const candidate = current + character;
-        if (current && font.widthOfTextAtSize(visualRtl(candidate), size) > maxWidth) {
+        if (current && textWidth(candidate,font,size) > maxWidth) {
           lines.push(current); current = character;
         } else { current = candidate; }
       }
       continue;
     }
     const candidate = current ? `${current} ${word}` : word;
-    if (font.widthOfTextAtSize(visualRtl(candidate), size) <= maxWidth || !current) current = candidate;
+    if (textWidth(candidate,font,size) <= maxWidth || !current) current = candidate;
     else { lines.push(current); current = word; }
   }
   if (current) lines.push(current);
@@ -82,7 +89,7 @@ export async function generateOrderPdf(args: {
 }) {
   const { snapshot, reference, generatedAt, imageBytes, logoBytes, verificationUrl, verificationId, documentVersion, snapshotHash } = args;
   const pdf = await PDFDocument.create();
-  pdf.registerFontkit(fontkit);
+  pdf.registerFontkit(documentFontkit);
   const [regularBytes, semiboldBytes] = await Promise.all([
     getFontBytes("Regular"),
     getFontBytes("SemiBold"),

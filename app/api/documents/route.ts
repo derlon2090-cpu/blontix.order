@@ -7,11 +7,12 @@ import { secureToken, verificationId } from "@/lib/security";
 import { signPdfWithManagedService } from "@/lib/signing";
 import { requireDocumentSession } from "@/lib/access";
 import { getLogoBytes } from "@/lib/pdf-assets";
+import {settleStorageTasks} from '@/lib/storage-parallel';
 
 const TEMPLATE_VERSION = "BLONTIX-DOC-V2";
 const BRANDING_VERSION = "BLONTIX-BRAND-V1";
 const LOGO_ASSET_ID = "blontix-logo-v1";
-const RENDERER_VERSION = "AP-PDF-ENGINE-1.1";
+const RENDERER_VERSION = "AP-PDF-ENGINE-1.2";
 
 function clean(value: FormDataEntryValue | null, label: string) {
   const text = typeof value === "string" ? value.trim() : "";
@@ -167,28 +168,31 @@ export async function POST(request: Request) {
     logoKey = `${prefix}/branding-logo-v1.png`;
     jobId = id;
     await env.DB.prepare(`INSERT INTO document_generation_jobs(id,object_keys,status,created_at,updated_at) VALUES (?,?::jsonb,'generating',?,?)`).bind(id,JSON.stringify([imageKey,pdfKey,renderInputKey,logoKey]),createdAt,createdAt).run();
-    if (await env.BUCKET.head(imageKey) || await env.BUCKET.head(pdfKey) || await env.BUCKET.head(renderInputKey) || await env.BUCKET.head(logoKey)) throw new Error("تم رفض محاولة استبدال ملف Master موجود.");
-    await env.BUCKET.put(imageKey, imageBytes, {
+    const existingObjects=await settleStorageTasks([imageKey,pdfKey,renderInputKey,logoKey].map(key=>()=>env.BUCKET.head(key)));
+    if(existingObjects.some(Boolean))throw new Error("تم رفض محاولة استبدال ملف Master موجود.");
+    await settleStorageTasks([
+    async()=>{await env.BUCKET.put(imageKey, imageBytes, {
       httpMetadata: { contentType: image.type },
       customMetadata: { orderNumber, snapshotHash, immutable: "true" },
     });
-    writtenKeys.push(imageKey);
-    await env.BUCKET.put(pdfKey, signing.bytes, {
+    writtenKeys.push(imageKey);},
+    async()=>{await env.BUCKET.put(pdfKey, signing.bytes, {
       httpMetadata: { contentType: "application/pdf", contentDisposition: `attachment; filename="${documentReference}.pdf"` },
       customMetadata: { documentReference, snapshotHash, pdfSha256, immutable: "true", documentVersion: String(documentVersion) },
     });
-    writtenKeys.push(pdfKey);
-    await env.BUCKET.put(renderInputKey, encryptedRenderInput, {
+    writtenKeys.push(pdfKey);},
+    async()=>{await env.BUCKET.put(renderInputKey, encryptedRenderInput, {
       httpMetadata: { contentType: "application/octet-stream" },
       customMetadata: { documentReference, renderInputSha256, immutable: "true", rendererVersion: RENDERER_VERSION },
     });
-    writtenKeys.push(renderInputKey);
-    await env.BUCKET.put(logoKey, logoBytes, {
+    writtenKeys.push(renderInputKey);},
+    async()=>{await env.BUCKET.put(logoKey, logoBytes, {
       httpMetadata: { contentType: "image/png" },
       customMetadata: { logoAssetId: LOGO_ASSET_ID, logoAssetSha256, immutable: "true" },
     });
 
-    writtenKeys.push(logoKey);
+    writtenKeys.push(logoKey);},
+    ]);
     const statements = [
       env.DB.prepare(
         `INSERT INTO order_documents (
@@ -223,10 +227,10 @@ export async function POST(request: Request) {
       {kind:'render_input',key:renderInputKey,bytes:new TextEncoder().encode(encryptedRenderInput),mime:'application/octet-stream'},
       {kind:'logo',key:logoKey,bytes:logoBytes,mime:'image/png'},
     ];
-    for(const asset of assets){
+    await settleStorageTasks(assets.map(asset=>async()=>{
       const stored=await env.BUCKET.get(asset.key);
       if(!stored || await sha256Bytes(new Uint8Array(await stored.arrayBuffer())) !== await sha256Bytes(asset.bytes)) throw new Error('Storage write verification failed');
-    }
+    }));
     finalizationAttempted = true;
     await env.DB.transaction(async tx => {
       await tx.batch(statements);
