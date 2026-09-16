@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import ts from 'typescript';
-if (process.env.BLONTIX_ISOLATED_QA !== '1') throw new Error('Test hooks require isolated QA');
+if (process.env.NODE_ENV==='production' || process.env.RENDER==='true' || process.env.BLONTIX_ISOLATED_QA !== '1') throw new Error('Test hooks forbidden in production; isolated QA required');
 registerHooks({
   resolve(specifier, context, next) {
     if (specifier === 'server-only') return { url: 'data:text/javascript,export{}', shortCircuit: true };

@@ -1,0 +1,10 @@
+# Apply to the existing service; preserve its environment variables.
+services:
+  - type: web
+    name: blontix-order
+    runtime: node
+    repo: https://github.com/derlon2090-cpu/blontix.order
+    branch: main
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health

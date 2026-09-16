@@ -1,3 +1,4 @@
+if(process.env.NODE_ENV==='production'||process.env.RENDER==='true') throw new Error('Local QA is forbidden in production');
 import assert from 'node:assert/strict';
 import { randomBytes, createHmac } from 'node:crypto';
 import argon2 from 'argon2';

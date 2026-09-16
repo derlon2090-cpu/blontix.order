@@ -1,3 +1,4 @@
+if(process.env.NODE_ENV==='production'||process.env.RENDER==='true') throw new Error('Local QA is forbidden in production');
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import argon2 from 'argon2';
@@ -17,7 +18,7 @@ await admin.query(`CREATE SCHEMA "${databaseName}"`);
 await admin.end();
 const url = new URL(process.env.DATABASE_URL); url.searchParams.set('options', '-c search_path=' + databaseName);
 const password = randomBytes(32).toString('base64url');
-const env = { ...process.env, DATABASE_URL: url.href, DATABASE_MIGRATIONS_SCHEMA: databaseName, DOCUMENTS_ACCESS_PASSWORD_HASH: await argon2.hash(password, { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 }), SESSION_SECRET: randomBytes(32).toString('base64url'), DATA_ENCRYPTION_KEY: randomBytes(32).toString('base64url'), AUDIT_HMAC_KEY: randomBytes(32).toString('base64url'), R2_ACCOUNT_ID: randomBytes(16).toString('hex'), R2_ACCESS_KEY_ID: 'isolated-qa-access', R2_SECRET_ACCESS_KEY: randomBytes(32).toString('hex'), R2_BUCKET_NAME: 'isolated-qa-bucket', BLONTIX_ISOLATED_QA: '1', NODE_ENV: 'production', __NEXT_PROCESSED_ENV: 'true', QA_PASSWORD: password, QA_BASE_URL: 'http://127.0.0.1:5174', NODE_OPTIONS: '--import ./tests/support/register.mjs', QA_S3_SDK_ENTRY: createRequire(import.meta.url).resolve('@aws-sdk/client-s3'), NEXT_TELEMETRY_DISABLED: '1' };
+const env = { ...process.env, DATABASE_URL: url.href, DATABASE_MIGRATIONS_SCHEMA: databaseName, DOCUMENTS_ACCESS_PASSWORD_HASH: await argon2.hash(password, { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 }), SESSION_SECRET: randomBytes(32).toString('base64url'), DATA_ENCRYPTION_KEY: randomBytes(32).toString('base64url'), AUDIT_HMAC_KEY: randomBytes(32).toString('base64url'), R2_ACCOUNT_ID: randomBytes(16).toString('hex'), R2_ACCESS_KEY_ID: 'isolated-qa-access', R2_SECRET_ACCESS_KEY: randomBytes(32).toString('hex'), R2_BUCKET_NAME: 'isolated-qa-bucket', BLONTIX_ISOLATED_QA: '1', NODE_ENV: 'test', __NEXT_PROCESSED_ENV: 'true', QA_PASSWORD: password, QA_BASE_URL: 'http://127.0.0.1:5174', NODE_OPTIONS: '--import ./tests/support/register.mjs', QA_S3_SDK_ENTRY: createRequire(import.meta.url).resolve('@aws-sdk/client-s3'), NEXT_TELEMETRY_DISABLED: '1' };
 const objects = new Map(); let failUploads = false; let failBucket = false;
 const storage = createServer(async (req, res) => {
   const key = decodeURIComponent(new URL(req.url, 'http://qa').pathname).replace(/^\//, '').replace(new RegExp('^' + env.R2_BUCKET_NAME + '/?'), '');
