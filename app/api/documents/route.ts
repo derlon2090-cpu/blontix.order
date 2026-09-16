@@ -4,6 +4,7 @@ import { generateOrderPdf } from "@/lib/pdf";
 import { auditHash, secureToken, verificationId } from "@/lib/security";
 import { signPdfWithManagedService } from "@/lib/signing";
 import { requireDocumentSession } from "@/lib/access";
+import logoDataUrl from "../../../public/blontix-logo-v1.png?inline";
 
 const TEMPLATE_VERSION = "BLONTIX-DOC-V2";
 const BRANDING_VERSION = "BLONTIX-BRAND-V1";
@@ -35,9 +36,12 @@ export async function GET(request: Request) {
   try {
     await requireDocumentSession(request);
     if (!env.DB) throw new Error("قاعدة البيانات غير متاحة.");
-    const result = await env.DB.prepare(
-      "SELECT id, order_number, customer_name, masked_phone, product_name, price, order_approved_at, delivered_at, delivery_method, status, lifecycle_status, document_reference, document_version, terms_version, snapshot_hash, pdf_sha256, verification_id, verification_token, template_version, signature_status, timestamp_status, created_at, generated_at FROM order_documents ORDER BY created_at DESC LIMIT 100"
-    ).all();
+    const rawSearch = new URL(request.url).searchParams.get("reference") ?? "";
+    const search = rawSearch.trim().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 80);
+    const columns = "id, order_number, customer_name, masked_phone, product_name, price, order_approved_at, delivered_at, delivery_method, status, lifecycle_status, document_reference, document_version, terms_version, snapshot_hash, pdf_sha256, verification_id, verification_token, template_version, signature_status, timestamp_status, created_at, generated_at";
+    const result = search
+      ? await env.DB.prepare(`SELECT ${columns} FROM order_documents WHERE instr(lower(document_reference), lower(?)) > 0 ORDER BY created_at DESC LIMIT 50`).bind(search).all()
+      : await env.DB.prepare(`SELECT ${columns} FROM order_documents ORDER BY created_at DESC LIMIT 100`).all();
     return Response.json({ documents: result.results.map((row) => publicRow(row as Record<string, unknown>, new URL(request.url).origin)) }, { headers: { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "تعذر تحميل المستندات.";
@@ -91,7 +95,7 @@ export async function POST(request: Request) {
     const documentVersion = Number(latest?.document_version ?? 0) + 1;
     const safeOrder = orderNumber.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
     if (!safeOrder) throw new Error("رقم الطلب غير صالح.");
-    const documentReference = `AP-ORD-${safeOrder}-V${documentVersion}`;
+    const documentReference = `bl-ORD-${safeOrder}-V${documentVersion}`;
     const createdAt = new Date().toISOString();
     const finalizedAt = createdAt;
     const id = crypto.randomUUID();
@@ -99,9 +103,9 @@ export async function POST(request: Request) {
     const verifyId = verificationId();
     const verificationUrl = `${new URL(request.url).origin}/verify/${token}`;
     const imageBytes = new Uint8Array(await image.arrayBuffer());
-    const logoResponse = await fetch(new URL("/blontix-logo-v1.png", request.url));
-    if (!logoResponse.ok) throw new Error("تعذر تحميل شعار blontix.");
-    const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
+    if (!logoDataUrl.startsWith("data:image/png;base64,")) throw new Error("تعذر تحميل شعار blontix.");
+    const logoBinary = atob(logoDataUrl.slice("data:image/png;base64,".length));
+    const logoBytes = Uint8Array.from(logoBinary, (character) => character.charCodeAt(0));
     const logoAssetSha256 = await sha256Bytes(logoBytes);
     const snapshot: OrderSnapshot = {
       orderNumber,

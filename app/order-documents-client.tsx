@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CUSTOMER_DECLARATION, DIGITAL_POLICY, WARRANTY_TEXT, type OrderDocumentRow } from "@/lib/order-document";
-import { Check, Copy, Download, Eye, FileCheck2, FileText, History, ImageUp, Loader2, LockKeyhole, LogOut, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { Check, Copy, Download, Eye, FileCheck2, FileText, History, ImageUp, Loader2, LockKeyhole, LogOut, Plus, RefreshCw, Search, ShieldCheck, X } from "lucide-react";
 import { toast, Toaster } from "sonner";
 
 type PreviewData = {
@@ -26,7 +26,7 @@ const nowLocal = () => {
   return date.toISOString().slice(0, 16);
 };
 
-function PdfSheet({ data, reference = "AP-ORD-000000" }: { data: PreviewData; reference?: string }) {
+function PdfSheet({ data, reference = "bl-ORD-000000-V1" }: { data: PreviewData; reference?: string }) {
   const info = [
     ["رقم الطلب", `#${data.orderNumber || "000000"}`], ["تاريخ الطلب والموافقة", data.orderApprovedAt ? formatDate(data.orderApprovedAt) : "—"],
     ["المنتج", data.productName || "Google Gemini – رابط تفعيل عرض 18 شهرًا"], ["السعر المدفوع", `${data.price || "24.99"} ر.س`],
@@ -65,6 +65,8 @@ function PdfSheet({ data, reference = "AP-ORD-000000" }: { data: PreviewData; re
 export default function OrderDocumentsClient() {
   const [documents, setDocuments] = useState<OrderDocumentRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const [loadError, setLoadError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -82,20 +84,29 @@ export default function OrderDocumentsClient() {
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewData>({ orderNumber: "", customerName: "", customerPhone: "0551234821", productName: "Google Gemini – رابط تفعيل عرض 18 شهرًا", price: "24.99", orderApprovedAt: nowLocal(), deliveredAt: nowLocal(), deliveryMethod: "واتساب", imageUrl: "" });
   const formRef = useRef<HTMLFormElement>(null);
+  const latestRequest = useRef(0);
 
-  const loadDocuments = async () => {
-    setLoading(true); setLoadError("");
+  const loadDocuments = async (reference = searchTerm) => {
+    const requestId = ++latestRequest.current;
+    if (reference) setSearching(true); else setLoading(true);
+    setLoadError("");
     try {
-      const response = await fetch("/api/documents", { cache: "no-store" });
+      const query = reference ? `?reference=${encodeURIComponent(reference)}` : "";
+      const response = await fetch(`/api/documents${query}`, { cache: "no-store" });
       const data = await response.json() as { documents: OrderDocumentRow[]; error?: string };
       if (!response.ok) throw new Error(data.error || "تعذر تحميل المستندات.");
-      setDocuments(data.documents);
+      if (requestId === latestRequest.current) setDocuments(data.documents);
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "تعذر تحميل المستندات.");
-    } finally { setLoading(false); }
+      if (requestId === latestRequest.current) setLoadError(error instanceof Error ? error.message : "تعذر تحميل المستندات.");
+    } finally {
+      if (requestId === latestRequest.current) { setLoading(false); setSearching(false); }
+    }
   };
 
-  useEffect(() => { void loadDocuments(); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadDocuments(searchTerm); }, searchTerm ? 180 : 0);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm]);
 
   useEffect(() => {
     const context = (document as Document & { modelContext?: { registerTool?: (tool: unknown, options?: { signal?: AbortSignal }) => void | Promise<void> } }).modelContext;
@@ -263,24 +274,33 @@ export default function OrderDocumentsClient() {
 
       <section className="mx-auto max-w-[1480px] px-5 py-7 lg:px-10">
         <div className="mb-6"><h1 className="text-2xl font-bold tracking-tight text-[#12263a] sm:text-3xl">مستندات الطلبات</h1><p className="mt-2 text-base text-[#64748b]">أنشئ المستند، راجع بياناته، ثم حمّل النسخة الأصلية لإرسالها للعميل.</p></div>
+        <div className="mb-5 rounded-xl border border-[#dbe5ef] bg-white p-4 sm:p-5">
+          <Label htmlFor="document-reference-search" className="mb-2 block font-semibold text-[#12263a]">البحث بالرقم المرجعي للمستند</Label>
+          <div className="relative max-w-xl">
+            <Search className="pointer-events-none absolute right-3 top-1/2 size-5 -translate-y-1/2 text-[#64748b]" />
+            <Input id="document-reference-search" dir="ltr" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="bl-ORD-45821-V1" className="h-11 px-11 text-left font-mono" autoComplete="off" />
+            {searchTerm && <button type="button" onClick={() => setSearchTerm("")} aria-label="مسح البحث" className="absolute left-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-[#64748b] hover:bg-[#edf6fc]"><X className="size-4" /></button>}
+          </div>
+          <p className="mt-2 text-xs text-[#64748b]">تظهر النتائج مباشرة أثناء كتابة الرقم المرجعي، بما فيها الإصدارات السابقة.</p>
+        </div>
         {loadError && <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-[#f0c8c3] bg-[#fff5f4] p-4 text-sm text-[#9f2d23]"><span>{loadError}</span><Button variant="outline" size="sm" onClick={() => void loadDocuments()}><RefreshCw /> إعادة المحاولة</Button></div>}
         <div className="overflow-hidden rounded-xl border border-[#dbe5ef] bg-white">
-          <div className="border-b border-[#e5edf5] px-5 py-4"><h2 className="font-bold text-[#12263a]">سجل المستندات</h2><p className="mt-1 text-sm text-[#64748b]">الملفات المعتمدة وبيانات الـ Snapshot المرتبطة بها</p></div>
+          <div className="flex items-center justify-between gap-4 border-b border-[#e5edf5] px-5 py-4"><div><h2 className="font-bold text-[#12263a]">سجل المستندات</h2><p className="mt-1 text-sm text-[#64748b]">الملفات المعتمدة وبيانات الـ Snapshot المرتبطة بها</p></div>{searching && <span className="flex items-center gap-2 text-xs text-[#64748b]"><Loader2 className="size-4 animate-spin" /> بحث…</span>}</div>
           {loading ? <div className="grid place-items-center py-20 text-[#64748b]"><Loader2 className="mb-3 animate-spin" /> جاري تحميل السجل…</div> : documents.length === 0 ? (
-            <div className="grid place-items-center px-5 py-20 text-center"><div className="mb-4 grid size-12 place-items-center rounded-xl bg-[#edf6fc] text-[#2f6fa8]"><FileText /></div><h3 className="font-bold text-[#12263a]">لا توجد مستندات بعد</h3><p className="mt-2 text-sm text-[#64748b]">أنشئ أول مستند طلب وسيظهر هنا مع ملفه المعتمد.</p><Button onClick={() => setCreateOpen(true)} className="mt-5 bg-[#0b2f55]"><Plus /> إنشاء مستند طلب</Button></div>
+            <div className="grid place-items-center px-5 py-20 text-center"><div className="mb-4 grid size-12 place-items-center rounded-xl bg-[#edf6fc] text-[#2f6fa8]"><FileText /></div><h3 className="font-bold text-[#12263a]">{searchTerm ? "لم نجد مستندًا بهذا الرقم المرجعي" : "لا توجد مستندات بعد"}</h3><p className="mt-2 text-sm text-[#64748b]">{searchTerm ? "راجع الرقم المرجعي أو اكتب جزءًا منه للبحث." : "أنشئ أول مستند طلب وسيظهر هنا مع ملفه المعتمد."}</p>{!searchTerm && <Button onClick={() => setCreateOpen(true)} className="mt-5 bg-[#0b2f55]"><Plus /> إنشاء مستند طلب</Button>}</div>
           ) : <div className="overflow-x-auto"><Table>
             <TableHeader className="bg-[#f7fafc]"><TableRow>{["رقم الطلب","العميل","المنتج","السعر","التاريخ","الحالة","الإصدار","الإجراءات"].map((head) => <TableHead key={head} className="h-12 px-4 text-right text-[#475569]">{head}</TableHead>)}</TableRow></TableHeader>
             <TableBody>{documents.map((doc) => <TableRow key={doc.id} className="hover:bg-[#f8fbfe]">
               <TableCell className="px-4 py-4 font-bold text-[#0b2f55]">#{doc.orderNumber}</TableCell><TableCell className="px-4 py-4 font-medium">{doc.customerName}</TableCell><TableCell className="max-w-[260px] truncate px-4 py-4">{doc.productName}</TableCell><TableCell className="px-4 py-4 font-mono text-sm">{doc.price} ر.س</TableCell><TableCell className="px-4 py-4 text-[#64748b]">{formatDate(doc.orderApprovedAt)}</TableCell>
               <TableCell className="px-4 py-4"><Badge className={doc.status === "final" ? "border border-[#b9dec8] bg-[#eaf8ef] text-[#17613a]" : doc.status === "cancelled" ? "border border-[#efc3c3] bg-[#fff1f1] text-[#9f2929]" : "border border-[#ead9a5] bg-[#fff9e8] text-[#7a5b10]"}><Check /> {statusText[doc.status]}</Badge></TableCell>
               <TableCell className="px-4 py-4 font-mono text-xs text-[#475569]">{doc.documentReference}<span className="mr-1 text-[#8a9aab]">V{doc.documentVersion}</span></TableCell>
-              <TableCell className="px-4 py-4"><div className="flex min-w-[620px] gap-2"><Button variant="outline" size="sm" onClick={() => openPdf(doc.id)}><Eye /> عرض</Button><Button variant="outline" size="sm" asChild><a href={`/api/documents/${doc.id}/pdf?download=1`}><Download /> تحميل PDF</a></Button><Button variant="ghost" size="sm" onClick={() => void copyVerification(doc.verificationUrl)}><Copy /> نسخ رابط التحقق</Button><Button variant="ghost" size="sm" onClick={() => { setReissueDoc(doc); setCreateOpen(true); }}><Plus /> إنشاء V{doc.documentVersion + 1}</Button><Button variant="ghost" size="sm" onClick={() => void showSnapshot(doc.id)}>Snapshot</Button><Button variant="ghost" size="sm" onClick={() => void showAudit(doc.id)}><History /> التدقيق</Button><Button variant="ghost" size="sm" className="text-[#a23a30]" onClick={() => setCancelId(doc.id)}>إلغاء</Button></div></TableCell>
+              <TableCell className="px-4 py-4"><div className="flex min-w-[620px] gap-2"><Button variant="outline" size="sm" onClick={() => openPdf(doc.id)}><Eye /> عرض</Button><Button variant="outline" size="sm" asChild><a href={`/api/documents/${doc.id}/pdf?download=1`} download={`${doc.documentReference}.pdf`}><Download /> تحميل PDF</a></Button><Button variant="ghost" size="sm" onClick={() => void copyVerification(doc.verificationUrl)}><Copy /> نسخ رابط التحقق</Button><Button variant="ghost" size="sm" onClick={() => { setReissueDoc(doc); setCreateOpen(true); }}><Plus /> إنشاء V{doc.documentVersion + 1}</Button><Button variant="ghost" size="sm" onClick={() => void showSnapshot(doc.id)}>Snapshot</Button><Button variant="ghost" size="sm" onClick={() => void showAudit(doc.id)}><History /> التدقيق</Button><Button variant="ghost" size="sm" className="text-[#a23a30]" onClick={() => setCancelId(doc.id)}>إلغاء</Button></div></TableCell>
             </TableRow>)}</TableBody>
           </Table></div>}
         </div>
       </section>
 
-      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}><DialogContent className="max-h-[95vh] max-w-[900px] overflow-auto bg-[#dde5ec] p-5" dir="rtl"><DialogHeader className="sr-only"><DialogTitle>معاينة المستند</DialogTitle><DialogDescription>معاينة قبل الاعتماد</DialogDescription></DialogHeader><PdfSheet data={preview} reference={preview.orderNumber ? `AP-ORD-${preview.orderNumber}` : undefined} /></DialogContent></Dialog>
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}><DialogContent className="max-h-[95vh] max-w-[900px] overflow-auto bg-[#dde5ec] p-5" dir="rtl"><DialogHeader className="sr-only"><DialogTitle>معاينة المستند</DialogTitle><DialogDescription>معاينة قبل الاعتماد</DialogDescription></DialogHeader><PdfSheet data={preview} reference={preview.orderNumber ? `bl-ORD-${preview.orderNumber}-V${reissueDoc ? reissueDoc.documentVersion + 1 : 1}` : undefined} /></DialogContent></Dialog>
       <Dialog open={pdfOpen} onOpenChange={setPdfOpen}><DialogContent className="h-[94vh] max-w-5xl p-0" dir="rtl"><DialogHeader className="border-b px-5 py-4 text-right"><DialogTitle>معاينة PDF المعتمد</DialogTitle><DialogDescription>هذه هي النسخة المحفوظة نهائيًا دون إعادة إنشاء.</DialogDescription></DialogHeader>{pdfUrl && <iframe title="معاينة PDF" src={pdfUrl} className="h-full min-h-0 w-full rounded-b-lg" />}</DialogContent></Dialog>
       <Dialog open={snapshotOpen} onOpenChange={setSnapshotOpen}><DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto" dir="rtl"><DialogHeader className="text-right"><DialogTitle className="flex items-center gap-2 text-[#0b2f55]"><LockKeyhole className="size-5" /> بيانات Snapshot</DialogTitle><DialogDescription>النسخة التاريخية التي يعتمد عليها المستند المعتمد حصريًا.</DialogDescription></DialogHeader>{!snapshot ? <div className="grid place-items-center py-16"><Loader2 className="animate-spin" /></div> : <div className="space-y-4"><div className="grid gap-3 sm:grid-cols-2">{Object.entries(snapshot).map(([key, value]) => <div key={key} className="rounded-lg border bg-[#f8fbfe] p-3"><p className="text-xs font-semibold text-[#60758a]">{key}</p><p className="mt-1 break-words text-sm text-[#172b3d]">{String(value || "—")}</p></div>)}</div><div className="rounded-lg border border-[#cfe0ef] bg-[#edf6fc] p-4"><p className="font-semibold text-[#0b2f55]">SHA-256</p><code className="mt-2 block break-all text-xs text-[#245b8a]">{String(snapshotMeta?.snapshotHash || "")}</code><p className="mt-3 flex items-center gap-2 text-sm text-[#315f87]"><LockKeyhole className="size-4" /> Snapshot معتمد للقراءة فقط — الإصدار {String(snapshotMeta?.documentVersion || "")}</p></div></div>}</DialogContent></Dialog>
       <Dialog open={auditOpen} onOpenChange={setAuditOpen}><DialogContent className="max-w-2xl" dir="rtl"><DialogHeader className="text-right"><DialogTitle className="flex items-center gap-2 text-[#0b2f55]"><History className="size-5" /> سجل التدقيق</DialogTitle><DialogDescription>سلسلة أحداث مترابطة ببصمات SHA-256، للقراءة فقط.</DialogDescription></DialogHeader>{auditEvents.length === 0 ? <div className="grid place-items-center py-12"><Loader2 className="animate-spin" /></div> : <div className="max-h-[55vh] space-y-3 overflow-y-auto">{auditEvents.map((event) => <div key={String(event.id)} className="rounded-lg border bg-[#f8fbfe] p-3"><div className="flex justify-between gap-3"><strong className="text-sm text-[#18354f]">{String(event.event_type)}</strong><span className="text-xs text-[#64748b]">{formatDate(String(event.created_at))}</span></div><code className="mt-2 block break-all text-[11px] text-[#416784]">{String(event.event_hash)}</code></div>)}</div>}</DialogContent></Dialog>

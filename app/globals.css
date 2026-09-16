@@ -124,11 +124,42 @@ button, input, select, textarea { font: inherit; }
 .verify-result.success { background: #effaf3; color: #17613a; }
 .verify-result.danger { background: #fff4f3; color: #9f2d23; }
 .verify-domain { margin-top: 22px; border-top: 1px solid #e2eaf2; padding-top: 17px; color: #718497; font-size: 12px; line-height: 1.7; text-align: center; }
-.login-page { display: grid; min-height: 100vh; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 0%, #d6f3f9 0, #edf6fa 38%, #f3f7fb 75%); }
-.login-card { width: min(100%, 390px); border: 1px solid #d7e3ed; border-radius: 20px; background: #fff; padding: 36px; box-shadow: 0 18px 48px rgb(21 54 84 / 12%); text-align: center; }
-.login-logo { display: block; width: 90px; height: 90px; margin: 0 auto 12px; object-fit: contain; }
-.login-card h1 { margin: 0; color: #0b2f55; font-size: 27px; font-weight: 700; direction: ltr; }
-.login-card > p { margin: 5px 0 0; color: #64788a; font-size: 15px; }
+.access-page { min-height: 100vh; overflow: hidden; background: #10151d; color: #fff; }
+.access-hero { position: relative; min-height: 380px; overflow: hidden; background: linear-gradient(115deg, #0b315d 0%, #155b92 45%, #0ba6bb 100%); }
+.access-hero::before { content: ""; position: absolute; inset: 0; opacity: .27; background: repeating-linear-gradient(134deg, transparent 0 28px, rgb(255 255 255 / 8%) 29px, transparent 30px 59px), radial-gradient(circle at 10% 25%, rgb(255 255 255 / 30%) 1px, transparent 1.5px); background-size: auto, 15px 15px; mask-image: linear-gradient(90deg, #000, transparent 60%); pointer-events: none; }
+.access-hero::after { content: ""; position: absolute; right: -7%; top: -220px; width: 520px; height: 520px; border: 1px solid rgb(255 255 255 / 12%); border-radius: 50%; box-shadow: 0 0 0 90px rgb(255 255 255 / 3%), 0 0 0 180px rgb(255 255 255 / 2%); pointer-events: none; }
+.access-hero-inner { position: relative; z-index: 1; margin: 0 auto; padding: 64px 20px 155px; text-align: center; }
+.access-brand { display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgb(255 255 255 / 26%); border-radius: 999px; background: rgb(255 255 255 / 11%); padding: 5px 15px 5px 8px; color: #fff; font-size: 14px; font-weight: 700; direction: ltr; }
+.access-brand img { width: 26px; height: 26px; object-fit: contain; }
+.access-hero h1 { margin: 20px 0 0; font-size: clamp(28px, 4vw, 43px); font-weight: 700; line-height: 1.25; }
+.access-hero p { margin: 12px 0 0; color: #deedf7; font-size: 16px; }
+.access-content { position: relative; z-index: 2; margin: -119px auto 0; padding: 0 20px 35px; }
+.access-card { width: min(100%, 576px); margin: 0 auto; border: 1px solid #35404d; border-radius: 25px; background: #1b1e23; padding: 31px 35px 34px; box-shadow: 0 20px 50px rgb(0 0 0 / 22%); text-align: center; }
+.access-step { display: flex; align-items: center; justify-content: center; gap: 13px; margin-bottom: 18px; direction: ltr; }
+.access-step span { display: grid; width: 29px; height: 29px; place-items: center; border: 1px solid #3c4a5a; border-radius: 50%; color: #a2afbe; font-size: 13px; }
+.access-step span.active { border-color: #48c7dc; background: #0d7795; color: #fff; }
+.access-step span.done { border-color: #48c7dc; color: #48c7dc; }
+.access-step i { width: 35px; height: 1px; background: #4c5c6c; }
+.access-card h2 { margin: 0; font-size: 23px; font-weight: 700; line-height: 1.5; }
+.access-subtitle { margin: 5px 0 0; color: #aebbc8; font-size: 14px; line-height: 1.6; }
+.access-form { display: grid; gap: 13px; margin-top: 25px; text-align: right; }
+.access-form label { color: #f5f8fa; font-size: 16px; font-weight: 700; text-align: center; }
+.access-form input { height: 58px; border: 1px solid #343b46; border-radius: 15px; background: #15171b; color: #fff; padding-inline: 20px; font-size: 16px; text-align: center; }
+.access-form input::placeholder { color: #89929d; }
+.access-form input:focus-visible { border-color: #45bbd2; outline: 2px solid rgb(69 187 210 / 20%); }
+.access-submit { display: flex; width: 100%; height: 58px; justify-content: center; gap: 10px; border-radius: 14px; background: linear-gradient(100deg, #087eaa, #0bb9c9); color: #fff; font-size: 16px; font-weight: 700; box-shadow: 0 9px 24px rgb(5 163 191 / 16%); }
+.access-submit:hover { background: linear-gradient(100deg, #096992, #09a9ba); }
+.access-submit:disabled { opacity: .5; }
+.access-alert { margin: 0; border: 1px solid #b35151; border-radius: 10px; background: rgb(131 33 33 / 20%); padding: 10px; color: #ffd7d7; font-size: 14px; text-align: center; }
+.access-back { display: inline-flex; align-items: center; justify-content: center; gap: 7px; margin-top: 2px; color: #b7dcea; font-size: 14px; text-decoration: none; }
+.access-back:hover { color: #fff; }
+.access-footnote { margin: 27px auto 0; color: #aab8c7; font-size: 13px; text-align: center; }
+@media (max-width: 620px) {
+  .access-hero { min-height: 350px; }
+  .access-hero-inner { padding-top: 54px; }
+  .access-content { margin-top: -119px; padding-inline: 15px; }
+  .access-card { padding: 26px 19px 28px; border-radius: 21px; }
+}
 @media (max-width: 640px) {
   .verify-card { padding: 19px; border-radius: 13px; }
   .verify-grid { grid-template-columns: 1fr; }

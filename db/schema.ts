@@ -114,6 +114,7 @@ export const accessSessions = sqliteTable(
   {
     tokenHash: text("token_hash").primaryKey(),
     passwordHashFingerprint: text("password_hash_fingerprint").notNull(),
+    deviceHash: text("device_hash").notNull().default(""),
     createdAt: text("created_at").notNull(),
     expiresAt: text("expires_at").notNull(),
     revokedAt: text("revoked_at"),
@@ -129,4 +130,29 @@ export const accessLoginAttempts = sqliteTable(
     lockedUntil: text("locked_until"),
     updatedAt: text("updated_at").notNull(),
   },
+);
+
+export const accessDevices = sqliteTable(
+  "access_devices",
+  {
+    deviceTokenHash: text("device_token_hash").primaryKey(),
+    failedCount: integer("failed_count").notNull().default(0),
+    bannedAt: text("banned_at"),
+    createdAt: text("created_at").notNull(),
+    lastSeenAt: text("last_seen_at").notNull(),
+  },
+  (table) => [index("idx_access_devices_banned_at").on(table.bannedAt)],
+);
+
+export const accessLoginChallenges = sqliteTable(
+  "access_login_challenges",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    deviceHash: text("device_hash").notNull(),
+    passwordHashFingerprint: text("password_hash_fingerprint").notNull(),
+    createdAt: text("created_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    consumedAt: text("consumed_at"),
+  },
+  (table) => [index("idx_access_login_challenges_expires_at").on(table.expiresAt)],
 );

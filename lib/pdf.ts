@@ -1,8 +1,8 @@
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, PDFFont, PDFImage, PDFPage, rgb } from "pdf-lib";
 import QRCode from "qrcode";
-import regularFontUrl from "@ibm/plex/IBM-Plex-Sans-Arabic/fonts/complete/woff/IBMPlexSansArabic-Regular.woff?url";
-import semiboldFontUrl from "@ibm/plex/IBM-Plex-Sans-Arabic/fonts/complete/woff/IBMPlexSansArabic-SemiBold.woff?url";
+import regularFontUrl from "@ibm/plex/IBM-Plex-Sans-Arabic/fonts/complete/woff/IBMPlexSansArabic-Regular.woff?inline";
+import semiboldFontUrl from "@ibm/plex/IBM-Plex-Sans-Arabic/fonts/complete/woff/IBMPlexSansArabic-SemiBold.woff?inline";
 import type { OrderSnapshot } from "./order-document";
 import { shortFingerprint } from "./security";
 
@@ -59,10 +59,12 @@ function drawCheck(page: PDFPage, x: number, y: number) {
   page.drawLine({ start: { x: x + 3, y: y - 3 }, end: { x: x + 8, y: y + 4 }, thickness: 1.2, color: rgb(27 / 255, 116 / 255, 70 / 255) });
 }
 
-async function loadFont(assetUrl: string, origin: string) {
-  const response = await fetch(new URL(assetUrl, origin));
-  if (!response.ok) throw new Error("تعذر تحميل الخط المضمّن.");
-  return response.arrayBuffer();
+async function loadFont(assetUrl: string) {
+  const marker = ";base64,";
+  const offset = assetUrl.indexOf(marker);
+  if (!assetUrl.startsWith("data:") || offset < 0) throw new Error("تعذر تحميل الخط المضمّن.");
+  const binary = atob(assetUrl.slice(offset + marker.length));
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
 export async function generateOrderPdf(args: {
@@ -77,12 +79,12 @@ export async function generateOrderPdf(args: {
   documentVersion: number;
   snapshotHash: string;
 }) {
-  const { snapshot, reference, generatedAt, imageBytes, logoBytes, origin, verificationUrl, verificationId, documentVersion, snapshotHash } = args;
+  const { snapshot, reference, generatedAt, imageBytes, logoBytes, verificationUrl, verificationId, documentVersion, snapshotHash } = args;
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const [regularBytes, semiboldBytes] = await Promise.all([
-    loadFont(regularFontUrl, origin),
-    loadFont(semiboldFontUrl, origin),
+    loadFont(regularFontUrl),
+    loadFont(semiboldFontUrl),
   ]);
   const regular = await pdf.embedFont(regularBytes, { subset: true });
   const semibold = await pdf.embedFont(semiboldBytes, { subset: true });

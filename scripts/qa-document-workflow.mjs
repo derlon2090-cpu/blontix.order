@@ -6,21 +6,74 @@ import { randomUUID, createHash } from "node:crypto";
 const base = process.env.QA_BASE_URL || "http://127.0.0.1:5174";
 const password = process.env.QA_PASSWORD;
 if (!password) throw new Error("QA_PASSWORD must be provided in the process environment.");
+const nativeFetch = globalThis.fetch;
+globalThis.fetch = (input, init = {}) => nativeFetch(input, { ...init, signal: init.signal || AbortSignal.timeout(120_000) });
 
-const login = await fetch(`${base}/api/access/login`, {
-  method: "POST", headers: { "content-type": "application/json" },
+const ip = `qa-legitimate-${randomUUID()}`;
+const deviceResponse = await fetch(`${base}/api/access/device`, { headers: { "cf-connecting-ip": ip } });
+assert.equal(deviceResponse.status, 200);
+const deviceCookie = deviceResponse.headers.get("set-cookie")?.split(";")[0];
+assert.match(deviceCookie || "", /__Host-blontix_device=/);
+const phaseOne = await fetch(`${base}/api/access/login`, {
+  method: "POST", headers: { "content-type": "application/json", cookie: deviceCookie, "cf-connecting-ip": ip },
   body: JSON.stringify({ password }),
 });
-assert.equal(login.status, 200, "new password must sign in");
-const setCookie = login.headers.get("set-cookie") || "";
-assert.match(setCookie, /HttpOnly/);
-assert.match(setCookie, /Secure/);
-assert.match(setCookie, /SameSite=Strict/);
-assert.match(setCookie, /Max-Age=43200/);
-const cookie = setCookie.split(";")[0];
-const auth = { cookie };
+assert.equal(phaseOne.status, 200, "new password must pass first stage");
+const preAuth = phaseOne.headers.get("set-cookie") || "";
+assert.match(preAuth, /HttpOnly/);
+assert.match(preAuth, /Secure/);
+assert.match(preAuth, /SameSite=Strict/);
+assert.match(preAuth, /Max-Age=300/);
+const preAuthCookie = preAuth.split(";")[0];
+assert.equal((await fetch(`${base}/api/documents`, { headers: { cookie: `${deviceCookie}; ${preAuthCookie}` } })).status, 401, "password alone must not grant access");
+const phaseTwo = await fetch(`${base}/api/access/email`, {
+  method: "POST", headers: { "content-type": "application/json", cookie: `${deviceCookie}; ${preAuthCookie}`, "cf-connecting-ip": ip },
+  body: JSON.stringify({ email: "blontix.official@gmail.com" }),
+});
+assert.equal(phaseTwo.status, 200, "admin email must pass second stage");
+const sessionCookie = phaseTwo.headers.getSetCookie().find((value) => value.startsWith("__Host-blontix_session="));
+assert.match(sessionCookie || "", /Max-Age=43200/);
+const auth = { cookie: `${deviceCookie}; ${sessionCookie.split(";")[0]}`, "cf-connecting-ip": ip };
+console.log("QA: two-stage login passed.");
 
-const orderNumber = `QA-BLONTIX-${Date.now()}`;
+const bannedIp = `qa-banned-${randomUUID()}`;
+const bannedDeviceResponse = await fetch(`${base}/api/access/device`, { headers: { "cf-connecting-ip": bannedIp } });
+assert.equal(bannedDeviceResponse.status, 200);
+const bannedDevice = bannedDeviceResponse.headers.get("set-cookie")?.split(";")[0];
+for (let attempt = 1; attempt <= 3; attempt++) {
+  const response = await fetch(`${base}/api/access/login`, {
+    method: "POST", headers: { "content-type": "application/json", cookie: bannedDevice, "cf-connecting-ip": bannedIp },
+    body: JSON.stringify({ password: "intentionally-wrong-password" }),
+  });
+  assert.equal(response.status, attempt === 3 ? 403 : 401, `attempt ${attempt}: ${await response.text()}`);
+}
+assert.equal((await fetch(`${base}/api/access/login`, {
+  method: "POST", headers: { "content-type": "application/json", cookie: bannedDevice, "cf-connecting-ip": bannedIp }, body: JSON.stringify({ password }),
+})).status, 403, "banned browser cannot sign in with valid password");
+console.log("QA: three-failure browser ban passed.");
+
+const mixedIp = `qa-mixed-${randomUUID()}`;
+const mixedDeviceResponse = await fetch(`${base}/api/access/device`, { headers: { "cf-connecting-ip": mixedIp } });
+assert.equal(mixedDeviceResponse.status, 200);
+const mixedDevice = mixedDeviceResponse.headers.get("set-cookie")?.split(";")[0];
+const mixedHeaders = { "content-type": "application/json", cookie: mixedDevice, "cf-connecting-ip": mixedIp };
+const mixedWrong = await fetch(`${base}/api/access/login`, { method: "POST", headers: mixedHeaders, body: JSON.stringify({ password: "wrong" }) });
+assert.equal(mixedWrong.status, 401, `mixed password failure: ${await mixedWrong.text()}`);
+const mixedPassword = await fetch(`${base}/api/access/login`, { method: "POST", headers: mixedHeaders, body: JSON.stringify({ password }) });
+assert.equal(mixedPassword.status, 200);
+const mixedPreAuth = mixedPassword.headers.get("set-cookie")?.split(";")[0];
+for (let attempt = 2; attempt <= 3; attempt++) {
+  const response = await fetch(`${base}/api/access/email`, {
+    method: "POST", headers: { ...mixedHeaders, cookie: `${mixedDevice}; ${mixedPreAuth}` }, body: JSON.stringify({ email: "wrong@example.com" }),
+  });
+  assert.equal(response.status, attempt === 3 ? 403 : 401, "password and email failures must share the three-attempt limit");
+}
+assert.equal((await fetch(`${base}/api/access/email`, {
+  method: "POST", headers: { ...mixedHeaders, cookie: `${mixedDevice}; ${mixedPreAuth}` }, body: JSON.stringify({ email: "blontix.official@gmail.com" }),
+})).status, 403, "banned browser cannot complete second stage");
+console.log("QA: combined password/email failures passed.");
+
+const orderNumber = `QA_BLONTIX_${Date.now()}`;
 const logo = readFileSync(resolve("public/blontix-logo-v1.png"));
 const createdAt = new Date();
 const deliveredAt = new Date(createdAt.getTime() + 60_000);
@@ -56,6 +109,11 @@ async function publicVerification(document) {
 }
 
 const v1 = await createDocument();
+console.log("QA: V1 PDF created.");
+assert.match(v1.documentReference, /^bl-ORD-.*-V1$/);
+const search = await fetch(`${base}/api/documents?reference=${encodeURIComponent(v1.documentReference.slice(0, -2))}`, { headers: auth });
+assert.equal(search.status, 200);
+assert.ok((await search.json()).documents.some((document) => document.id === v1.id), "reference search must return document");
 const snapshotResponse = await fetch(`${base}/api/documents/${v1.id}`, { headers: auth });
 assert.equal(snapshotResponse.status, 200);
 const snapshot = await snapshotResponse.json();
@@ -63,6 +121,7 @@ assert.equal(snapshot.snapshot.customerPhone, customerPhone);
 assert.equal(snapshot.snapshot.logoAssetId, "blontix-logo-v1");
 const pdfResponse = await fetch(`${base}/api/documents/${v1.id}/pdf?download=1`, { headers: auth });
 assert.equal(pdfResponse.status, 200);
+assert.match(pdfResponse.headers.get("content-disposition") || "", new RegExp(`${v1.documentReference}\\.pdf`));
 const pdf = new Uint8Array(await pdfResponse.arrayBuffer());
 assert.equal(createHash("sha256").update(pdf).digest("hex"), v1.pdfSha256);
 assert.equal(String.fromCharCode(...pdf.slice(0, 4)), "%PDF");
@@ -99,4 +158,4 @@ const logout = await fetch(`${base}/api/access/logout`, { method: "POST", header
 assert.equal(logout.status, 200);
 assert.equal((await fetch(`${base}/api/documents`, { headers: auth })).status, 401);
 
-console.log(JSON.stringify({ result: "pass", cases: ["argon2id login", "secure cookie", "V1 final", "snapshot full phone", "stored PDF SHA-256", "public verification privacy", "public Master download", "PDF match", "PDF tamper mismatch", "V2 supersedes V1", "cancelled", "invalid token", "logout revocation"], qaPdf: resolve("tmp/qa-blontix-v1.pdf") }));
+console.log(JSON.stringify({ result: "pass", cases: ["two-stage login", "password-only denied", "secure cookies", "three-failure browser ban", "combined password/email attempt count", "bl reference", "reference search", "reference PDF filename", "V1 final", "snapshot full phone", "stored PDF SHA-256", "public verification privacy", "public Master download", "PDF match", "PDF tamper mismatch", "V2 supersedes V1", "cancelled", "invalid token", "logout revocation"], qaPdf: resolve("tmp/qa-blontix-v1.pdf") }));
