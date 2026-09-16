@@ -1,5 +1,11 @@
-# Vercel deployment transition
+# Frontend on Vercel
 
-Production now targets the existing Render web service with PostgreSQL and Cloudflare R2. Follow [DEPLOYMENT-RENDER.md](./DEPLOYMENT-RENDER.md). Turso and Vercel Blob are no longer production providers; their environment variables are not used.
+Deploy this repository's main branch with the existing vercel.json. Vercel builds with npm run build:vercel, which selects APP_ROLE=frontend. Vercel runtime selects frontend automatically from VERCEL=1. Build output remains native Next.js in .next.
 
-The native Next.js build remains compatible with Vercel, but a frontend on another origin needs an explicit same-origin proxy to Render before authentication can use the required Strict cookies. Do not point browser API calls directly across unrelated domains or enable wildcard administrative CORS. Serve the whole app on Render for the configured deployment.
+The frontend serves the existing UI and verification page. Its /api/* requests use a beforeFiles reverse proxy to https://blontix-order.onrender.com. SSR login checks call the backend's minimal /api/access/status endpoint and forward cookies only. PostgreSQL, Argon2 verification, R2 and all persistent operations execute on Render; frontend runtime refuses to access database/storage providers.
+
+BACKEND_URL is an optional non-secret HTTPS origin when changing the backend hostname. Its default is the existing Render service URL. Do not set APP_ROLE=frontend or VERCEL=1 on Render. Do not put DATABASE_URL, access-password hash, session/encryption/audit keys, or R2 credentials on Vercel. Remove old Turso/Blob/hash/session credentials from the existing Vercel environment after the Render backend is configured; source changes cannot remove dashboard variables.
+
+Browser requests remain same-origin on Vercel. Backend Set-Cookie responses use the existing host-only HttpOnly, Secure, SameSite=Strict cookies. No wildcard CORS, cross-domain cookie relaxation, client secrets, or direct browser R2 access is introduced. The public verification URLs and PDF generation rules remain unchanged.
+
+Deploy Render first, verify its /api/health, then deploy Vercel. A successful frontend build does not prove live backend connectivity. npm run start:vercel provides a local frontend-only Next.js start command and does not migrate or connect to PostgreSQL.

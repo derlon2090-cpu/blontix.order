@@ -1,10 +1,10 @@
 # blontix — مستندات توثيق الطلبات
 
-منصة لإنشاء مستند طلب PDF ثابت، وحفظ نسخه المستقلة في Cloudflare R2 الخاص وبياناتها في PostgreSQL على Render. صفحة `/verify/{secureToken}` عامة، بينما الإدارة تتطلب جلسة دخول من مرحلتين.
+منصة لإنشاء مستند طلب PDF ثابت، وحفظ نسخه المستقلة في Cloudflare R2 الخاص وبياناتها في Neon PostgreSQL الخارجي. يعمل Backend على Render المجاني والواجهة على Vercel. صفحة `/verify/{secureToken}` عامة، بينما الإدارة تتطلب جلسة دخول من مرحلتين.
 
 ## التشغيل والنشر
 
-تستخدم Production حصريًا PostgreSQL وR2. لا توجد قاعدة بديلة في الذاكرة أو SQLite أو LocalStorage. الاتصال أو الإعداد الناقص يمنع تشغيل الخادم. إعداد الخدمة والمتغيرات والترحيلات في [DEPLOYMENT-RENDER.md](./DEPLOYMENT-RENDER.md)، وأسماء المتغيرات دون قيم في [.env.example](./.env.example).
+تستخدم Production حصريًا Neon PostgreSQL وR2، دون Render Database أو Disk أو Cloudflare Worker. إعداد Render محفوظ في render.yaml بالخطة المجانية، وإعداد الواجهة في DEPLOYMENT-VERCEL.md. لا توجد قاعدة بديلة في الذاكرة أو SQLite أو LocalStorage. الاتصال أو الإعداد الناقص يمنع تشغيل الخادم. إعداد الخدمة والمتغيرات والترحيلات في [DEPLOYMENT-RENDER.md](./DEPLOYMENT-RENDER.md)، وأسماء المتغيرات دون قيم في [.env.example](./.env.example).
 
 استخدم Node.js 22.x، ثم `npm ci` و`npm run build` و`npm start`. يطبق التشغيل ترحيلات `drizzle-postgres` تلقائيًا تحت قفل PostgreSQL؛ يمكن أيضًا تشغيل `npm run db:migrate`. مجلد `drizzle` القديم سجل لترحيلات SQLite السابقة وليس مصدر Production الحالي. ترحيل بيانات الاستضافات السابقة يحتاج عملية استيراد منفصلة تحفظ الملفات والبصمات.
 

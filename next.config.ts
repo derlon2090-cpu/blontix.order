@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
+import {deploymentRole,backendOrigin} from './lib/deployment.mjs';
 
 const nextConfig: NextConfig = {
+  // Only the deployment role is embedded; backend secrets are never bundled.
+  env: {APP_ROLE:deploymentRole()},
+  async rewrites() {
+    return {beforeFiles:deploymentRole()==='frontend' ? [{source:'/api/:path*',destination:`${backendOrigin()}/api/:path*`}] : [],afterFiles:[],fallback:[]};
+  },
   serverExternalPackages: ['pg', 'argon2', '@aws-sdk/client-s3'],
   outputFileTracingIncludes: {
     "/api/documents": ["./public/blontix-logo-v1.png", "./node_modules/@ibm/plex/IBM-Plex-Sans-Arabic/fonts/complete/woff/IBMPlexSansArabic-{Regular,SemiBold}.woff"],
