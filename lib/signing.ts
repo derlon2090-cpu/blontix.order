@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/runtime";
 
 export type SigningResult = {
   bytes: Uint8Array;

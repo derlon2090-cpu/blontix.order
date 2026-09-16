@@ -1,10 +1,10 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/runtime";
 import { DIGITAL_POLICY, CUSTOMER_DECLARATION, WARRANTY_TEXT, canonicalStringify, maskPhone, sha256Bytes, sha256Hex, type OrderSnapshot } from "@/lib/order-document";
 import { generateOrderPdf } from "@/lib/pdf";
 import { auditHash, secureToken, verificationId } from "@/lib/security";
 import { signPdfWithManagedService } from "@/lib/signing";
 import { requireDocumentSession } from "@/lib/access";
-import logoDataUrl from "../../../public/blontix-logo-v1.png?inline";
+import { getLogoBytes } from "@/lib/pdf-assets";
 
 const TEMPLATE_VERSION = "BLONTIX-DOC-V2";
 const BRANDING_VERSION = "BLONTIX-BRAND-V1";
@@ -54,6 +54,7 @@ export async function POST(request: Request) {
   let pdfKey = "";
   let renderInputKey = "";
   let logoKey = "";
+  const writtenKeys: string[] = [];
   try {
     const actorId = await requireDocumentSession(request);
     if (!env.DB || !env.BUCKET) throw new Error("خدمة الحفظ غير متاحة حاليًا.");
@@ -103,9 +104,7 @@ export async function POST(request: Request) {
     const verifyId = verificationId();
     const verificationUrl = `${new URL(request.url).origin}/verify/${token}`;
     const imageBytes = new Uint8Array(await image.arrayBuffer());
-    if (!logoDataUrl.startsWith("data:image/png;base64,")) throw new Error("تعذر تحميل شعار blontix.");
-    const logoBinary = atob(logoDataUrl.slice("data:image/png;base64,".length));
-    const logoBytes = Uint8Array.from(logoBinary, (character) => character.charCodeAt(0));
+    const logoBytes = await getLogoBytes();
     const logoAssetSha256 = await sha256Bytes(logoBytes);
     const snapshot: OrderSnapshot = {
       orderNumber,
@@ -164,19 +163,23 @@ export async function POST(request: Request) {
       httpMetadata: { contentType: image.type },
       customMetadata: { orderNumber, snapshotHash, immutable: "true" },
     });
+    writtenKeys.push(imageKey);
     await env.BUCKET.put(pdfKey, signing.bytes, {
       httpMetadata: { contentType: "application/pdf", contentDisposition: `attachment; filename="${documentReference}.pdf"` },
       customMetadata: { documentReference, snapshotHash, pdfSha256, immutable: "true", documentVersion: String(documentVersion) },
     });
+    writtenKeys.push(pdfKey);
     await env.BUCKET.put(renderInputKey, renderInputJson, {
       httpMetadata: { contentType: "application/json; charset=utf-8" },
       customMetadata: { documentReference, renderInputSha256, immutable: "true", rendererVersion: RENDERER_VERSION },
     });
+    writtenKeys.push(renderInputKey);
     await env.BUCKET.put(logoKey, logoBytes, {
       httpMetadata: { contentType: "image/png" },
       customMetadata: { logoAssetId: LOGO_ASSET_ID, logoAssetSha256, immutable: "true" },
     });
 
+    writtenKeys.push(logoKey);
     const auditCreatedAt = new Date().toISOString();
     const auditInput = { documentId: id, eventType: "document_finalized", result: "success", actorId, previousHash: "", createdAt: auditCreatedAt };
     const eventHash = await auditHash(auditInput);
@@ -226,10 +229,7 @@ export async function POST(request: Request) {
     }, { status: 201 });
   } catch (error) {
     if (env.BUCKET) {
-      if (imageKey) await env.BUCKET.delete(imageKey).catch(() => undefined);
-      if (pdfKey) await env.BUCKET.delete(pdfKey).catch(() => undefined);
-      if (renderInputKey) await env.BUCKET.delete(renderInputKey).catch(() => undefined);
-      if (logoKey) await env.BUCKET.delete(logoKey).catch(() => undefined);
+      for (const key of writtenKeys) await env.BUCKET.delete(key).catch(() => undefined);
     }
     const message = error instanceof Error ? error.message : "تعذر إنشاء المستند.";
     return Response.json({ error: message === "AUTH_REQUIRED" ? "يلزم تسجيل الدخول لاعتماد المستند." : message }, { status: message === "AUTH_REQUIRED" ? 401 : 400 });

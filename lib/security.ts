@@ -29,6 +29,7 @@ export async function auditHash(input: {
 }
 
 export function clientAddressHashSource(request: Request) {
+  if (process.env.VERCEL === "1") return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous";
   const raw = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous";
   return raw;
 }

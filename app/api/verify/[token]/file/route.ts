@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/runtime";
 import { sha256Bytes } from "@/lib/order-document";
 import { enforceVerificationRateLimit, recordVerification } from "@/lib/verification";
 

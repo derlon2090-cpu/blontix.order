@@ -1,5 +1,6 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/runtime";
 import { argon2idAsync } from "@noble/hashes/argon2.js";
+import { clientAddressHashSource } from "./security";
 
 const SESSION_COOKIE_NAME = "__Host-blontix_session";
 const DEVICE_COOKIE_NAME = "__Host-blontix_device";
@@ -200,6 +201,6 @@ export function clearedSessionCookie() {
 }
 
 export async function loginSubjectHash(request: Request) {
-  const address = request.headers.get("cf-connecting-ip") || "anonymous";
+  const address = clientAddressHashSource(request);
   return hmac(`login-ip:${address}`);
 }

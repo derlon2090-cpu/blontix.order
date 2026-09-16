@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/runtime";
 import { accessDevice, clearedPreAuthCookie, constantTimeTextEqual, consumePreAuthChallenge, createDocumentSession, ipLoginLocked, preAuthChallenge, recordAccessFailure, resetAccessFailures } from "@/lib/access";
 
 const ADMIN_EMAIL = "blontix.official@gmail.com";

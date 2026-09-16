@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/runtime";
 import { accessDevice, createPreAuthChallenge, ipLoginLocked, recordAccessFailure, verifyAccessPassword } from "@/lib/access";
 
 const responseHeaders = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" };

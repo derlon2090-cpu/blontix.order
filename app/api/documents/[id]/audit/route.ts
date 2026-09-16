@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/runtime";
 import { requireDocumentSession } from "@/lib/access";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
