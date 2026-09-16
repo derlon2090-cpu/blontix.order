@@ -1,3 +1,4 @@
+import {decryptData} from '@/lib/data-encryption';
 import { env } from "@/lib/runtime";
 import { appendDocumentAudit } from "@/lib/audit";
 import { requireDocumentSession } from "@/lib/access";
@@ -12,7 +13,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     ).bind(id).first<Record<string, unknown>>();
     if (!row) return Response.json({ error: "المستند غير موجود." }, { status: 404 });
     await appendDocumentAudit(env.DB, id, "snapshot_viewed", "success", actorId);
-    const snapshot = JSON.parse(String(row.snapshot_json));
+    const snapshot = JSON.parse(decryptData(String(row.snapshot_json), `snapshot:${id}`));
     return Response.json({
       snapshot,
       snapshotHash: row.snapshot_hash,
@@ -26,6 +27,6 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "تعذر تحميل Snapshot.";
-    return Response.json({ error: message === "AUTH_REQUIRED" ? "يلزم تسجيل الدخول." : message }, { status: message === "AUTH_REQUIRED" ? 401 : 500, headers: { "Cache-Control": "no-store" } });
+    return Response.json({ error: message === "AUTH_REQUIRED" ? "يلزم تسجيل الدخول." : "تعذر تحميل المستند." }, { status: message === "AUTH_REQUIRED" ? 401 : 500, headers: { "Cache-Control": "no-store" } });
   }
 }

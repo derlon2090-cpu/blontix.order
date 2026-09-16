@@ -1,7 +1,9 @@
+import {encryptData,decryptData} from '@/lib/data-encryption';
+import {appendDocumentAudit} from '@/lib/audit';
 import { env } from "@/lib/runtime";
 import { DIGITAL_POLICY, CUSTOMER_DECLARATION, WARRANTY_TEXT, canonicalStringify, maskPhone, sha256Bytes, sha256Hex, type OrderSnapshot } from "@/lib/order-document";
 import { generateOrderPdf } from "@/lib/pdf";
-import { auditHash, secureToken, verificationId } from "@/lib/security";
+import { secureToken, verificationId } from "@/lib/security";
 import { signPdfWithManagedService } from "@/lib/signing";
 import { requireDocumentSession } from "@/lib/access";
 import { getLogoBytes } from "@/lib/pdf-assets";
@@ -26,7 +28,7 @@ function publicRow(row: Record<string, unknown>, origin: string) {
     documentReference: row.document_reference, documentVersion: row.document_version,
     termsVersion: row.terms_version, snapshotHash: row.snapshot_hash, pdfSha256: row.pdf_sha256,
     verificationId: row.verification_id, templateVersion: row.template_version,
-    verificationUrl: row.verification_token ? `${origin}/verify/${row.verification_token}` : undefined,
+    verificationUrl: row.verification_token ? `${origin}/verify/${decryptData(String(row.verification_token), `token:${row.id}`)}` : undefined,
     signatureStatus: row.signature_status, timestampStatus: row.timestamp_status,
     createdAt: row.created_at, generatedAt: row.generated_at,
   };
@@ -40,12 +42,12 @@ export async function GET(request: Request) {
     const search = rawSearch.trim().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 80);
     const columns = "id, order_number, customer_name, masked_phone, product_name, price, order_approved_at, delivered_at, delivery_method, status, lifecycle_status, document_reference, document_version, terms_version, snapshot_hash, pdf_sha256, verification_id, verification_token, template_version, signature_status, timestamp_status, created_at, generated_at";
     const result = search
-      ? await env.DB.prepare(`SELECT ${columns} FROM order_documents WHERE instr(lower(document_reference), lower(?)) > 0 ORDER BY created_at DESC LIMIT 50`).bind(search).all()
+      ? await env.DB.prepare(`SELECT ${columns} FROM order_documents WHERE strpos(lower(document_reference), lower(?)) > 0 ORDER BY created_at DESC LIMIT 50`).bind(search).all()
       : await env.DB.prepare(`SELECT ${columns} FROM order_documents ORDER BY created_at DESC LIMIT 100`).all();
     return Response.json({ documents: result.results.map((row) => publicRow(row as Record<string, unknown>, new URL(request.url).origin)) }, { headers: { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "تعذر تحميل المستندات.";
-    return Response.json({ error: message === "AUTH_REQUIRED" ? "يلزم تسجيل الدخول لعرض لوحة المستندات." : message }, { status: message === "AUTH_REQUIRED" ? 401 : 500 });
+    return Response.json({ error: message === "AUTH_REQUIRED" ? "يلزم تسجيل الدخول لعرض لوحة المستندات." : "تعذر تحميل المستندات." }, { status: message === "AUTH_REQUIRED" ? 401 : 503 });
   }
 }
 
@@ -55,6 +57,9 @@ export async function POST(request: Request) {
   let renderInputKey = "";
   let logoKey = "";
   const writtenKeys: string[] = [];
+  let committed = false;
+  let jobId = "";
+  let finalizationAttempted = false;
   try {
     const actorId = await requireDocumentSession(request);
     if (!env.DB || !env.BUCKET) throw new Error("خدمة الحفظ غير متاحة حاليًا.");
@@ -145,6 +150,8 @@ export async function POST(request: Request) {
       verificationId: verifyId, documentVersion, snapshotHash, rendererVersion: RENDERER_VERSION,
     });
     const renderInputSha256 = await sha256Hex(renderInputJson);
+    const encryptedRenderInput = encryptData(renderInputJson, `render-input:${id}`);
+    const tokenHash = await sha256Hex(token);
     const unsignedPdf = await generateOrderPdf({
       snapshot, reference: documentReference, generatedAt: createdAt, imageBytes, logoBytes,
       origin: request.url, verificationUrl, verificationId: verifyId, documentVersion, snapshotHash,
@@ -158,6 +165,8 @@ export async function POST(request: Request) {
     pdfKey = `${prefix}/${documentReference}.pdf`;
     renderInputKey = `${prefix}/render-input.json`;
     logoKey = `${prefix}/branding-logo-v1.png`;
+    jobId = id;
+    await env.DB.prepare(`INSERT INTO document_generation_jobs(id,object_keys,status,created_at,updated_at) VALUES (?,?::jsonb,'generating',?,?)`).bind(id,JSON.stringify([imageKey,pdfKey,renderInputKey,logoKey]),createdAt,createdAt).run();
     if (await env.BUCKET.head(imageKey) || await env.BUCKET.head(pdfKey) || await env.BUCKET.head(renderInputKey) || await env.BUCKET.head(logoKey)) throw new Error("تم رفض محاولة استبدال ملف Master موجود.");
     await env.BUCKET.put(imageKey, imageBytes, {
       httpMetadata: { contentType: image.type },
@@ -169,8 +178,8 @@ export async function POST(request: Request) {
       customMetadata: { documentReference, snapshotHash, pdfSha256, immutable: "true", documentVersion: String(documentVersion) },
     });
     writtenKeys.push(pdfKey);
-    await env.BUCKET.put(renderInputKey, renderInputJson, {
-      httpMetadata: { contentType: "application/json; charset=utf-8" },
+    await env.BUCKET.put(renderInputKey, encryptedRenderInput, {
+      httpMetadata: { contentType: "application/octet-stream" },
       customMetadata: { documentReference, renderInputSha256, immutable: "true", rendererVersion: RENDERER_VERSION },
     });
     writtenKeys.push(renderInputKey);
@@ -180,9 +189,6 @@ export async function POST(request: Request) {
     });
 
     writtenKeys.push(logoKey);
-    const auditCreatedAt = new Date().toISOString();
-    const auditInput = { documentId: id, eventType: "document_finalized", result: "success", actorId, previousHash: "", createdAt: auditCreatedAt };
-    const eventHash = await auditHash(auditInput);
     const statements = [
       env.DB.prepare(
         `INSERT INTO order_documents (
@@ -190,31 +196,45 @@ export async function POST(request: Request) {
           order_approved_at, delivered_at, delivery_method, status, document_reference,
           document_version, terms_version, snapshot_json, snapshot_hash, image_key,
           image_content_type, pdf_key, created_at, generated_at, finalized_at,
-          verification_token, verification_id, pdf_sha256, template_version, branding_version,
+          verification_token, verification_token_hash, verification_id, pdf_sha256, template_version, branding_version,
           logo_asset_id, logo_asset_sha256, logo_asset_key, renderer_version, render_input_key, render_input_sha256,
           lifecycle_status, supersedes_document_id, reissue_reason,
           idempotency_key, signed_at, certificate_fingerprint, certificate_serial,
           signature_status, timestamp_status, timestamp_authority_result
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'final', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'final', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
-        id, orderNumber, snapshot.customerName, customerPhone, snapshot.maskedPhone, productName, price,
+        id, orderNumber, snapshot.customerName, encryptData(customerPhone, `phone:${id}`), snapshot.maskedPhone, productName, price,
         orderApprovedAt, deliveredAt, snapshot.deliveryMethod, documentReference, documentVersion,
-        snapshot.termsVersion, snapshotJson, snapshotHash, imageKey, image.type, pdfKey, createdAt,
-        createdAt, finalizedAt, token, verifyId, pdfSha256, snapshot.templateVersion,
+        snapshot.termsVersion, encryptData(snapshotJson, `snapshot:${id}`), snapshotHash, imageKey, image.type, pdfKey, createdAt,
+        createdAt, finalizedAt, encryptData(token, `token:${id}`), tokenHash, verifyId, pdfSha256, snapshot.templateVersion,
         snapshot.brandingVersion, snapshot.logoAssetId, snapshot.logoAssetSha256, logoKey,
         snapshot.rendererVersion, renderInputKey, renderInputSha256,
         "final", latest?.id ?? null, reissueReason || null,
         idempotencyKey, signing.signedAt, signing.certificateFingerprint, signing.certificateSerial,
         signing.signatureStatus, signing.timestampStatus, signing.timestampAuthorityResult
       ),
-      env.DB.prepare(
-        "INSERT INTO document_audit_logs (id, document_id, event_type, result, actor_id, previous_hash, event_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-      ).bind(crypto.randomUUID(), id, auditInput.eventType, auditInput.result, actorId, "", eventHash, auditCreatedAt),
     ];
     if (latest) {
       statements.push(env.DB.prepare("UPDATE order_documents SET lifecycle_status = 'superseded' WHERE id = ? AND lifecycle_status = 'final'").bind(latest.id));
     }
-    await env.DB.batch(statements);
+    const assets = [
+      {kind:'master',key:pdfKey,bytes:signing.bytes,mime:'application/pdf'},
+      {kind:'description',key:imageKey,bytes:imageBytes,mime:image.type},
+      {kind:'render_input',key:renderInputKey,bytes:new TextEncoder().encode(encryptedRenderInput),mime:'application/octet-stream'},
+      {kind:'logo',key:logoKey,bytes:logoBytes,mime:'image/png'},
+    ];
+    for(const asset of assets){
+      const stored=await env.BUCKET.get(asset.key);
+      if(!stored || await sha256Bytes(new Uint8Array(await stored.arrayBuffer())) !== await sha256Bytes(asset.bytes)) throw new Error('Storage write verification failed');
+    }
+    finalizationAttempted = true;
+    await env.DB.transaction(async tx => {
+      await tx.batch(statements);
+      for(const asset of assets) await tx.prepare('INSERT INTO document_assets(id,document_id,kind,object_key,sha256,file_size,mime_type,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),id,asset.kind,asset.key,await sha256Bytes(asset.bytes),asset.bytes.byteLength,asset.mime,createdAt).run();
+      await appendDocumentAudit(tx,id,'document_finalized','success',actorId);
+      await tx.prepare("UPDATE document_generation_jobs SET status = 'final', updated_at = ? WHERE id = ?").bind(new Date().toISOString(),id).run();
+    });
+    committed = true;
 
     return Response.json({
       document: {
@@ -228,10 +248,16 @@ export async function POST(request: Request) {
       },
     }, { status: 201 });
   } catch (error) {
-    if (env.BUCKET) {
+    let safeToClean = !finalizationAttempted;
+    if (finalizationAttempted && !committed && jobId) {
+      try { const job = await env.DB.prepare('SELECT status FROM document_generation_jobs WHERE id = ?').bind(jobId).first<{status:string}>(); safeToClean = job?.status !== 'final'; } catch { safeToClean = false; }
+    }
+    if (!committed && safeToClean) {
       for (const key of writtenKeys) await env.BUCKET.delete(key).catch(() => undefined);
+      if (jobId) await env.DB.prepare("UPDATE document_generation_jobs SET status = 'generation_failed', updated_at = ? WHERE id = ? AND status != 'final'").bind(new Date().toISOString(),jobId).run().catch(() => undefined);
     }
     const message = error instanceof Error ? error.message : "تعذر إنشاء المستند.";
-    return Response.json({ error: message === "AUTH_REQUIRED" ? "يلزم تسجيل الدخول لاعتماد المستند." : message }, { status: message === "AUTH_REQUIRED" ? 401 : 400 });
+    const safeMessage = /[\u0600-\u06ff]/.test(message) ? message : 'تعذر إنشاء المستند. لم يتم اعتماد العملية.';
+    return Response.json({ error: message === "AUTH_REQUIRED" ? "يلزم تسجيل الدخول لاعتماد المستند." : safeMessage }, { status: message === "AUTH_REQUIRED" ? 401 : 400 });
   }
 }

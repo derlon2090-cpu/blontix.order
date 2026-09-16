@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import { randomBytes, createHmac } from 'node:crypto';
+import argon2 from 'argon2';
+import { createRequire } from 'node:module';
+const password=randomBytes(32).toString('base64url');
+Object.assign(process.env,{DATABASE_URL:'postgresql://isolated:isolated@127.0.0.1:1/isolated',DOCUMENTS_ACCESS_PASSWORD_HASH:await argon2.hash(password,{type:argon2.argon2id,memoryCost:19456,timeCost:2,parallelism:1}),SESSION_SECRET:randomBytes(32).toString('base64url'),DATA_ENCRYPTION_KEY:randomBytes(32).toString('base64url'),AUDIT_HMAC_KEY:randomBytes(32).toString('base64url'),R2_ACCOUNT_ID:randomBytes(16).toString('hex'),R2_ACCESS_KEY_ID:'test-only',R2_SECRET_ACCESS_KEY:randomBytes(32).toString('hex'),R2_BUCKET_NAME:'isolated-qa-bucket',BLONTIX_ISOLATED_QA:'1',QA_S3_SDK_ENTRY:createRequire(import.meta.url).resolve('@aws-sdk/client-s3')});
+await import('./support/register.mjs');
+const {validateEnvironment}=await import('../lib/environment.mjs');
+const {encryptData,decryptData}=await import('../lib/data-encryption.ts');
+const {verifyAccessPassword}=await import('../lib/access.ts');
+const {auditHash,secureToken}=await import('../lib/security.ts');
+const {canonicalStringify}=await import('../lib/order-document.ts');
+validateEnvironment();
+for(const key of ['DATABASE_URL','DOCUMENTS_ACCESS_PASSWORD_HASH','SESSION_SECRET','DATA_ENCRYPTION_KEY','AUDIT_HMAC_KEY','R2_ACCOUNT_ID','R2_ACCESS_KEY_ID','R2_SECRET_ACCESS_KEY','R2_BUCKET_NAME']){const value=process.env[key];delete process.env[key];assert.throws(validateEnvironment,new RegExp('Missing required environment variable: '+key));process.env[key]=value;}
+assert.equal(await verifyAccessPassword(password),true);assert.equal(await verifyAccessPassword('intentionally-wrong'),false);
+const a=encryptData('0551234821','phone:isolated'),b=encryptData('0551234821','phone:isolated');assert.notEqual(a,b);assert.equal(decryptData(a,'phone:isolated'),'0551234821');assert.throws(()=>decryptData(a,'phone:another'));
+const parts=a.split(':');const bytes=Buffer.from(parts[4],'base64url');bytes[0]^=1;parts[4]=bytes.toString('base64url');assert.throws(()=>decryptData(parts.join(':'),'phone:isolated'));
+const event={eventId:'isolated-event',documentId:'isolated',eventType:'finalized',result:'ok',actorId:null,previousHash:'',createdAt:'2026-09-16T00:00:00.000Z',sequence:1};
+assert.equal(await auditHash(event),createHmac('sha256',Buffer.from(process.env.AUDIT_HMAC_KEY,'base64url')).update(canonicalStringify(event)).digest('hex'));
+assert.notEqual(await auditHash(event),await auditHash({...event,result:'tampered'}));assert.equal(Buffer.from(secureToken(),'base64url').length,32);assert.notEqual(secureToken(),secureToken());
+console.log('PASS: nine missing-variable failures, native Argon2id verification, random AES-GCM nonces, ciphertext/AAD tamper rejection, independent audit HMAC and random QR tokens.');

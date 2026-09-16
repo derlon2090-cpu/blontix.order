@@ -1,11 +1,9 @@
-import { canonicalStringify, sha256Hex } from "./order-document";
+import 'server-only';
+import {createHmac,randomBytes} from 'node:crypto';
+import {decodeKey,validateEnvironment} from './environment.mjs';
+import { canonicalStringify } from "./order-document";
 
-export function secureToken(byteLength = 32) {
-  const bytes = crypto.getRandomValues(new Uint8Array(byteLength));
-  let binary = "";
-  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "");
-}
+export function secureToken(byteLength = 32) { if(byteLength < 32) throw new Error('Token must contain at least 32 random bytes'); return randomBytes(byteLength).toString('base64url'); }
 
 export function verificationId() {
   const bytes = crypto.getRandomValues(new Uint8Array(4));
@@ -18,14 +16,16 @@ export function shortFingerprint(hash: string) {
 }
 
 export async function auditHash(input: {
+  eventId: string;
   documentId: string;
   eventType: string;
   result: string;
   actorId: string | null;
   previousHash: string;
   createdAt: string;
+  sequence: number;
 }) {
-  return sha256Hex(canonicalStringify(input));
+  return createHmac("sha256", decodeKey(validateEnvironment().AUDIT_HMAC_KEY, "AUDIT_HMAC_KEY")).update(canonicalStringify(input)).digest("hex");
 }
 
 export function clientAddressHashSource(request: Request) {

@@ -1,3 +1,4 @@
+import {sha256Hex} from '@/lib/order-document';
 import { env } from "@/lib/runtime";
 import { enforceVerificationRateLimit, recordVerification } from "@/lib/verification";
 import { shortFingerprint } from "@/lib/security";
@@ -22,19 +23,19 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
       `SELECT id, order_number, product_name, price, masked_phone, document_reference,
         document_version, finalized_at, lifecycle_status, verification_id, pdf_sha256, snapshot_hash,
         signature_status, timestamp_status
-       FROM order_documents WHERE verification_token = ?`
-    ).bind(token).first<Record<string, unknown>>();
+       FROM order_documents WHERE verification_token_hash = ?`
+    ).bind(await sha256Hex(token)).first<Record<string, unknown>>();
     if (!row) {
       const revoked = await env.DB.prepare(
-        "SELECT id FROM document_verification_tokens WHERE token = ? AND status = 'revoked'"
-      ).bind(token).first();
+        "SELECT id FROM document_verification_tokens WHERE token_hash = ? AND status = 'revoked'"
+      ).bind(await sha256Hex(token)).first();
       if (revoked) return Response.json({ status: "revoked" }, { status: 410, headers });
       await recordVerification(null, "not_found");
       return Response.json({ status: "not_found" }, { status: 404, headers });
     }
     const latest = await env.DB.prepare(
       "SELECT MAX(document_version) AS latest_version FROM order_documents WHERE order_number = ? AND lifecycle_status != 'cancelled'"
-    ).bind(row.order_number).first<{ latest_version: number }>();
+    ).bind(String(row.order_number)).first<{ latest_version: number }>();
     const lifecycle = String(row.lifecycle_status);
     const status = lifecycle === "cancelled" ? "cancelled" : Number(latest?.latest_version ?? row.document_version) > Number(row.document_version) ? "superseded" : "original";
     await recordVerification(String(row.id), status);

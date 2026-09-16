@@ -1,22 +1,18 @@
-import { env } from "@/lib/runtime";
-import { auditHash } from "@/lib/security";
-import { requireDocumentSession } from "@/lib/access";
-
-export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  let actorId: string;
-  try { actorId = await requireDocumentSession(request); } catch { return Response.json({ error: "يلزم تسجيل الدخول." }, { status: 401 }); }
-  if (!env.DB) return Response.json({ error: "قاعدة البيانات غير متاحة." }, { status: 500 });
-  const { id } = await context.params;
-  const row = await env.DB.prepare("SELECT lifecycle_status FROM order_documents WHERE id = ?").bind(id).first<{ lifecycle_status: string }>();
-  if (!row) return Response.json({ error: "المستند غير موجود." }, { status: 404 });
-  if (row.lifecycle_status === "cancelled") return Response.json({ status: "cancelled", idempotent: true });
-  const previous = await env.DB.prepare("SELECT event_hash FROM document_audit_logs WHERE document_id = ? ORDER BY created_at DESC, id DESC LIMIT 1").bind(id).first<{ event_hash: string }>();
-  const createdAt = new Date().toISOString();
-  const audit = { documentId: id, eventType: "document_cancelled", result: "success", actorId, previousHash: previous?.event_hash ?? "", createdAt };
-  const eventHash = await auditHash(audit);
-  await env.DB.batch([
-    env.DB.prepare("UPDATE order_documents SET lifecycle_status = 'cancelled' WHERE id = ? AND lifecycle_status != 'cancelled'").bind(id),
-    env.DB.prepare("INSERT INTO document_audit_logs (id, document_id, event_type, result, actor_id, previous_hash, event_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), id, audit.eventType, audit.result, actorId, audit.previousHash, eventHash, createdAt),
-  ]);
-  return Response.json({ status: "cancelled" });
+import { env } from '@/lib/runtime';
+import { appendDocumentAudit } from '@/lib/audit';
+import { requireDocumentSession } from '@/lib/access';
+export async function POST(request: Request, context: {params:Promise<{id:string}>}) {
+  try {
+    const actorId=await requireDocumentSession(request), {id}=await context.params;
+    const found=await env.DB.transaction(async tx=>{
+      const row=await tx.prepare('SELECT lifecycle_status FROM order_documents WHERE id = ? FOR UPDATE').bind(id).first<{lifecycle_status:string}>();
+      if(!row) return false;
+      if(row.lifecycle_status!=='cancelled') {
+        await appendDocumentAudit(tx,id,'document_cancelled','success',actorId);
+        await tx.prepare("UPDATE order_documents SET lifecycle_status = 'cancelled' WHERE id = ?").bind(id).run();
+      }
+      return true;
+    });
+    return Response.json(found?{status:'cancelled'}:{error:'المستند غير موجود.'},{status:found?200:404});
+  }catch(error){return Response.json({error:'تعذر تنفيذ العملية.'},{status:error instanceof Error && error.message==='AUTH_REQUIRED'?401:503});}
 }

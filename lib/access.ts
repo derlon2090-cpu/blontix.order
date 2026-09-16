@@ -1,5 +1,6 @@
 import { env } from "@/lib/runtime";
-import { argon2idAsync } from "@noble/hashes/argon2.js";
+import argon2 from "argon2";
+import { randomBytes, createHash } from "node:crypto";
 import { clientAddressHashSource } from "./security";
 
 const SESSION_COOKIE_NAME = "__Host-blontix_session";
@@ -8,7 +9,6 @@ const PREAUTH_COOKIE_NAME = "__Host-blontix_pre_auth";
 const SESSION_SECONDS = 12 * 60 * 60;
 const PREAUTH_SECONDS = 5 * 60;
 const encoder = new TextEncoder();
-let passwordVerificationQueue = Promise.resolve();
 
 function toBase64Url(bytes: Uint8Array) {
   let binary = "";
@@ -36,23 +36,9 @@ export function accessPasswordHash() {
 
 export async function verifyAccessPassword(password: string) {
   const hash = accessPasswordHash();
-  const parts = hash.split("$");
-  if (parts.length !== 6 || parts[1] !== "argon2id" || parts[2] !== "v=19") throw new Error("ACCESS_HASH_INVALID");
-  const cost = Object.fromEntries(parts[3].split(",").map((pair) => pair.split("=")));
-  const m = Number(cost.m), t = Number(cost.t), p = Number(cost.p);
-  if (!Number.isInteger(m) || m < 8192 || m > 32768 || !Number.isInteger(t) || t < 2 || t > 4 || p !== 1) throw new Error("ACCESS_HASH_INVALID");
-  const salt = fromBase64Url(parts[4]);
-  const expected = fromBase64Url(parts[5]);
-  if (salt.length < 16 || expected.length !== 32) throw new Error("ACCESS_HASH_INVALID");
-  // Limit the memory-heavy operation to one request per Worker isolate.
-  const previous = passwordVerificationQueue;
-  let release!: () => void;
-  passwordVerificationQueue = new Promise<void>((resolve) => { release = resolve; });
-  await previous;
-  try {
-    const actual = await argon2idAsync(encoder.encode(password), salt, { m, t, p, dkLen: 32, maxmem: 48 * 1024 * 1024 });
-    return constantTimeEqual(actual, expected);
-  } finally { release(); }
+  const parts = hash.split('$');
+  const normalized = parts.map((part,index) => index >= 4 ? part.replaceAll('-','+').replaceAll('_','/') : part).join('$');
+  try { return await argon2.verify(normalized, password); } catch { throw new Error('ACCESS_HASH_INVALID'); }
 }
 
 async function hmac(value: string) {
@@ -68,7 +54,7 @@ function cookieFromRequest(request: Request, name: string) {
 }
 
 function validToken(value: string) { return /^[A-Za-z0-9_-]{43}$/.test(value); }
-function freshToken() { return toBase64Url(crypto.getRandomValues(new Uint8Array(32))); }
+function freshToken() { return randomBytes(32).toString("base64url"); }
 function secureCookie(name: string, token: string, maxAge: number) {
   return `${name}=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${maxAge}`;
 }
@@ -132,8 +118,8 @@ export async function createPreAuthChallenge(deviceHash: string) {
   if (!env.DB) throw new Error("DB_UNAVAILABLE");
   const token = freshToken();
   const now = new Date();
-  await env.DB.prepare("INSERT INTO access_login_challenges (token_hash, device_hash, password_hash_fingerprint, created_at, expires_at, consumed_at) VALUES (?, ?, ?, ?, ?, NULL)")
-    .bind(await hmac(`preauth:${token}`), deviceHash, await hmac(`password-hash:${accessPasswordHash()}`), now.toISOString(), new Date(now.getTime() + PREAUTH_SECONDS * 1000).toISOString()).run();
+  await env.DB.prepare("INSERT INTO access_login_challenges (token_hash, device_hash, created_at, expires_at, consumed_at) VALUES (?, ?, ?, ?, NULL)")
+    .bind(await hmac(`preauth:${token}`), deviceHash, now.toISOString(), new Date(now.getTime() + PREAUTH_SECONDS * 1000).toISOString()).run();
   return secureCookie(PREAUTH_COOKIE_NAME, token, PREAUTH_SECONDS);
 }
 
@@ -144,9 +130,9 @@ export async function preAuthChallenge(request: Request) {
   const device = await accessDevice(request);
   if (!device || device.banned) return null;
   const tokenHash = await hmac(`preauth:${token}`);
-  const row = await env.DB.prepare("SELECT device_hash, password_hash_fingerprint FROM access_login_challenges WHERE token_hash = ? AND consumed_at IS NULL AND expires_at > ?")
-    .bind(tokenHash, new Date().toISOString()).first<{ device_hash: string; password_hash_fingerprint: string }>();
-  if (!row || row.device_hash !== device.deviceHash || row.password_hash_fingerprint !== await hmac(`password-hash:${accessPasswordHash()}`)) return null;
+  const row = await env.DB.prepare("SELECT device_hash FROM access_login_challenges WHERE token_hash = ? AND consumed_at IS NULL AND expires_at > ?")
+    .bind(tokenHash, new Date().toISOString()).first<{ device_hash: string }>();
+  if (!row || row.device_hash !== device.deviceHash) return null;
   return { tokenHash, deviceHash: device.deviceHash };
 }
 
@@ -171,8 +157,8 @@ export async function sessionIsValid(request: Request) {
   const device = await accessDevice(request);
   if (!device || device.banned) return false;
   const tokenHash = await hmac(`session:${token}`);
-  const row = await env.DB.prepare("SELECT password_hash_fingerprint, device_hash FROM access_sessions WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?").bind(tokenHash, new Date().toISOString()).first<{ password_hash_fingerprint: string; device_hash: string }>();
-  return Boolean(row && row.device_hash === device.deviceHash && row.password_hash_fingerprint === await hmac(`password-hash:${accessPasswordHash()}`));
+  const row = await env.DB.prepare("SELECT device_hash FROM access_sessions WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?").bind(tokenHash, new Date().toISOString()).first<{ device_hash: string }>();
+  return Boolean(row && row.device_hash === device.deviceHash);
 }
 
 export async function requireDocumentSession(request: Request) {
@@ -185,7 +171,7 @@ export async function createDocumentSession(deviceHash: string) {
   const token = freshToken();
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + SESSION_SECONDS * 1000);
-  await env.DB.prepare("INSERT INTO access_sessions (token_hash, password_hash_fingerprint, device_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)").bind(await hmac(`session:${token}`), await hmac(`password-hash:${accessPasswordHash()}`), deviceHash, createdAt.toISOString(), expiresAt.toISOString()).run();
+  await env.DB.prepare("INSERT INTO access_sessions (token_hash, device_hash, created_at, expires_at) VALUES (?, ?, ?, ?)").bind(await hmac(`session:${token}`), deviceHash, createdAt.toISOString(), expiresAt.toISOString()).run();
   return secureCookie(SESSION_COOKIE_NAME, token, SESSION_SECONDS);
 }
 
@@ -202,5 +188,5 @@ export function clearedSessionCookie() {
 
 export async function loginSubjectHash(request: Request) {
   const address = clientAddressHashSource(request);
-  return hmac(`login-ip:${address}`);
+  return createHash("sha256").update(`login-ip:${address}`).digest("hex");
 }

@@ -1,23 +1,21 @@
-import { env } from "@/lib/runtime";
-import { auditHash, secureToken } from "@/lib/security";
-import { requireDocumentSession } from "@/lib/access";
-
-export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  let actorId: string;
-  try { actorId = await requireDocumentSession(request); } catch { return Response.json({ error: "يلزم تسجيل الدخول." }, { status: 401 }); }
-  if (!env.DB) return Response.json({ error: "قاعدة البيانات غير متاحة." }, { status: 500 });
-  const { id } = await context.params;
-  const row = await env.DB.prepare("SELECT verification_token FROM order_documents WHERE id = ?").bind(id).first<{ verification_token: string }>();
-  if (!row) return Response.json({ error: "المستند غير موجود." }, { status: 404 });
-  const previous = await env.DB.prepare("SELECT event_hash FROM document_audit_logs WHERE document_id = ? ORDER BY created_at DESC, id DESC LIMIT 1").bind(id).first<{ event_hash: string }>();
-  const token = secureToken(32);
-  const createdAt = new Date().toISOString();
-  const audit = { documentId: id, eventType: "verification_token_rotated", result: "success", actorId, previousHash: previous?.event_hash ?? "", createdAt };
-  const eventHash = await auditHash(audit);
-  await env.DB.batch([
-    env.DB.prepare("INSERT INTO document_verification_tokens (id, document_id, token, status, revoked_at, created_at) VALUES (?, ?, ?, 'revoked', ?, ?)").bind(crypto.randomUUID(), id, row.verification_token, createdAt, createdAt),
-    env.DB.prepare("UPDATE order_documents SET verification_token = ? WHERE id = ? AND verification_token = ?").bind(token, id, row.verification_token),
-    env.DB.prepare("INSERT INTO document_audit_logs (id, document_id, event_type, result, actor_id, previous_hash, event_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), id, audit.eventType, audit.result, actorId, audit.previousHash, eventHash, createdAt),
-  ]);
-  return Response.json({ verificationUrl: `${new URL(request.url).origin}/verify/${token}` });
+import { env } from '@/lib/runtime';
+import { appendDocumentAudit } from '@/lib/audit';
+import { secureToken } from '@/lib/security';
+import { encryptData } from '@/lib/data-encryption';
+import { sha256Hex } from '@/lib/order-document';
+import { requireDocumentSession } from '@/lib/access';
+export async function POST(request:Request,context:{params:Promise<{id:string}>}) {
+  try {
+    const actorId=await requireDocumentSession(request),{id}=await context.params,token=secureToken(32),hash=await sha256Hex(token);
+    const found=await env.DB.transaction(async tx=>{
+      const row=await tx.prepare('SELECT verification_token_hash FROM order_documents WHERE id = ? FOR UPDATE').bind(id).first<{verification_token_hash:string}>();
+      if(!row)return false;
+      const now=new Date().toISOString();
+      await appendDocumentAudit(tx,id,'verification_token_rotated','success',actorId);
+      await tx.prepare("INSERT INTO document_verification_tokens(id,document_id,token_hash,status,revoked_at,created_at) VALUES (?,?,?,'revoked',?,?)").bind(crypto.randomUUID(),id,row.verification_token_hash,now,now).run();
+      await tx.prepare('UPDATE order_documents SET verification_token = ?, verification_token_hash = ? WHERE id = ?').bind(encryptData(token,`token:${id}`),hash,id).run();
+      return true;
+    });
+    return Response.json(found?{verificationUrl:`${new URL(request.url).origin}/verify/${token}`}:{error:'المستند غير موجود.'},{status:found?200:404});
+  }catch(error){return Response.json({error:'تعذر تنفيذ العملية.'},{status:error instanceof Error&&error.message==='AUTH_REQUIRED'?401:503});}
 }

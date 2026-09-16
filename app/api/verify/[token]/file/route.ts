@@ -1,3 +1,4 @@
+import {sha256Hex} from '@/lib/order-document';
 import { env } from "@/lib/runtime";
 import { sha256Bytes } from "@/lib/order-document";
 import { enforceVerificationRateLimit, recordVerification } from "@/lib/verification";
@@ -15,8 +16,8 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     await enforceVerificationRateLimit(request, "verify-file", 10);
     const { token } = await context.params;
     const row = await env.DB.prepare(
-      "SELECT id, pdf_sha256 FROM order_documents WHERE verification_token = ?"
-    ).bind(token).first<{ id: string; pdf_sha256: string }>();
+      "SELECT id, pdf_sha256 FROM order_documents WHERE verification_token_hash = ?"
+    ).bind(await sha256Hex(token)).first<{ id: string; pdf_sha256: string }>();
     if (!row) return Response.json({ result: "not_found" }, { status: 404, headers });
     const form = await request.formData();
     const file = form.get("file");

@@ -9,7 +9,7 @@ export async function enforceVerificationRateLimit(request: Request, scope: stri
   await env.DB.prepare(
     `INSERT INTO verification_rate_limits (subject_hash, window_start, count)
      VALUES (?, ?, 1)
-     ON CONFLICT(subject_hash, window_start) DO UPDATE SET count = count + 1`
+     ON CONFLICT(subject_hash, window_start) DO UPDATE SET count = verification_rate_limits.count + 1`
   ).bind(subjectHash, windowStart).run();
   const row = await env.DB.prepare(
     "SELECT count FROM verification_rate_limits WHERE subject_hash = ? AND window_start = ?"

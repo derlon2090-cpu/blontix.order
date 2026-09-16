@@ -1,3 +1,4 @@
+import {sha256Hex,sha256Bytes} from '@/lib/order-document';
 import { env } from "@/lib/runtime";
 import { enforceVerificationRateLimit, recordVerification } from "@/lib/verification";
 
@@ -16,11 +17,12 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
     const { token } = await context.params;
     if (token.length < 32 || token.length > 128) return new Response("المستند غير موجود.", { status: 404, headers: secureHeaders });
     const row = await env.DB.prepare(
-      "SELECT id, pdf_key, document_reference FROM order_documents WHERE verification_token = ?"
-    ).bind(token).first<{ id: string; pdf_key: string; document_reference: string }>();
+      "SELECT id, pdf_key, pdf_sha256, document_reference FROM order_documents WHERE verification_token_hash = ?"
+    ).bind(await sha256Hex(token)).first<{ id: string; pdf_key: string; pdf_sha256: string; document_reference: string }>();
     if (!row) return new Response("المستند غير موجود.", { status: 404, headers: secureHeaders });
     const object = await env.BUCKET.get(row.pdf_key);
     if (!object) throw new Error("UNAVAILABLE");
+    if (await sha256Bytes(object.body) !== row.pdf_sha256) throw new Error("Master integrity failed");
     await recordVerification(row.id, "master_pdf_downloaded");
     return new Response(object.body, { headers: {
       ...secureHeaders,

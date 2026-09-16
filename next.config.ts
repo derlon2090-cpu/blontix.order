@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['@libsql/client', '@vercel/blob'],
+  serverExternalPackages: ['pg', 'argon2', '@aws-sdk/client-s3'],
   outputFileTracingIncludes: {
     "/api/documents": ["./public/blontix-logo-v1.png", "./node_modules/@ibm/plex/IBM-Plex-Sans-Arabic/fonts/complete/woff/IBMPlexSansArabic-{Regular,SemiBold}.woff"],
   },

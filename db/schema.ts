@@ -1,6 +1,6 @@
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, jsonb, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 
-export const orderDocuments = sqliteTable(
+export const orderDocuments = pgTable(
   "order_documents",
   {
     id: text("id").primaryKey(),
@@ -25,7 +25,8 @@ export const orderDocuments = sqliteTable(
     createdAt: text("created_at").notNull(),
     generatedAt: text("generated_at").notNull(),
     finalizedAt: text("finalized_at").notNull().default(""),
-    verificationToken: text("verification_token").notNull().default(""),
+    verificationToken: text("verification_token").notNull(),
+    verificationTokenHash: text("verification_token_hash").notNull(),
     verificationId: text("verification_id").notNull().default(""),
     pdfSha256: text("pdf_sha256").notNull().default(""),
     templateVersion: text("template_version").notNull().default("AP-DOC-V1"),
@@ -39,6 +40,8 @@ export const orderDocuments = sqliteTable(
     lifecycleStatus: text("lifecycle_status").notNull().default("final"),
     supersedesDocumentId: text("supersedes_document_id"),
     reissueReason: text("reissue_reason"),
+    auditHeadHash: text('audit_head_hash').notNull().default(''),
+    auditEventCount: integer('audit_event_count').notNull().default(0),
     idempotencyKey: text("idempotency_key").notNull().default(""),
     signedAt: text("signed_at"),
     certificateFingerprint: text("certificate_fingerprint"),
@@ -50,33 +53,36 @@ export const orderDocuments = sqliteTable(
   (table) => [
     uniqueIndex("idx_order_documents_reference").on(table.documentReference),
     uniqueIndex("idx_order_documents_order_version").on(table.orderNumber, table.documentVersion),
-    uniqueIndex("idx_order_documents_verification_token").on(table.verificationToken),
+    uniqueIndex("idx_order_documents_verification_token_hash").on(table.verificationTokenHash),
+    index("idx_order_documents_created_at").on(table.createdAt),
+    index("idx_order_documents_order_number").on(table.orderNumber),
     uniqueIndex("idx_order_documents_verification_id").on(table.verificationId),
     uniqueIndex("idx_order_documents_idempotency_key").on(table.idempotencyKey),
     index("idx_order_documents_status_created").on(table.lifecycleStatus, table.createdAt),
   ],
 );
 
-export const documentVerificationTokens = sqliteTable(
+export const documentVerificationTokens = pgTable(
   "document_verification_tokens",
   {
     id: text("id").primaryKey(),
     documentId: text("document_id").notNull(),
-    token: text("token").notNull(),
+    tokenHash: text("token_hash").notNull(),
     status: text("status").notNull().default("revoked"),
     revokedAt: text("revoked_at").notNull(),
     createdAt: text("created_at").notNull(),
   },
   (table) => [
-    uniqueIndex("idx_document_verification_tokens_token").on(table.token),
+    uniqueIndex("idx_document_verification_tokens_token").on(table.tokenHash),
     index("idx_document_verification_tokens_document").on(table.documentId, table.createdAt),
   ],
 );
 
-export const documentAuditLogs = sqliteTable(
+export const documentAuditLogs = pgTable(
   "document_audit_logs",
   {
     id: text("id").primaryKey(),
+    sequence: integer("sequence").notNull(),
     documentId: text("document_id").notNull(),
     eventType: text("event_type").notNull(),
     result: text("result").notNull(),
@@ -85,10 +91,10 @@ export const documentAuditLogs = sqliteTable(
     eventHash: text("event_hash").notNull(),
     createdAt: text("created_at").notNull(),
   },
-  (table) => [index("idx_document_audit_document_created").on(table.documentId, table.createdAt)],
+  (table) => [index("idx_document_audit_document_created").on(table.documentId, table.createdAt), uniqueIndex("idx_document_audit_sequence").on(table.documentId, table.sequence)],
 );
 
-export const verificationRateLimits = sqliteTable(
+export const verificationRateLimits = pgTable(
   "verification_rate_limits",
   {
     subjectHash: text("subject_hash").notNull(),
@@ -98,7 +104,7 @@ export const verificationRateLimits = sqliteTable(
   (table) => [primaryKey({ columns: [table.subjectHash, table.windowStart] })],
 );
 
-export const verificationEvents = sqliteTable(
+export const verificationEvents = pgTable(
   "verification_events",
   {
     id: text("id").primaryKey(),
@@ -109,11 +115,10 @@ export const verificationEvents = sqliteTable(
   (table) => [index("idx_verification_events_document_created").on(table.documentId, table.createdAt)],
 );
 
-export const accessSessions = sqliteTable(
+export const accessSessions = pgTable(
   "access_sessions",
   {
     tokenHash: text("token_hash").primaryKey(),
-    passwordHashFingerprint: text("password_hash_fingerprint").notNull(),
     deviceHash: text("device_hash").notNull().default(""),
     createdAt: text("created_at").notNull(),
     expiresAt: text("expires_at").notNull(),
@@ -122,7 +127,7 @@ export const accessSessions = sqliteTable(
   (table) => [index("idx_access_sessions_expires_at").on(table.expiresAt)],
 );
 
-export const accessLoginAttempts = sqliteTable(
+export const accessLoginAttempts = pgTable(
   "access_login_attempts",
   {
     subjectHash: text("subject_hash").primaryKey(),
@@ -132,7 +137,7 @@ export const accessLoginAttempts = sqliteTable(
   },
 );
 
-export const accessDevices = sqliteTable(
+export const accessDevices = pgTable(
   "access_devices",
   {
     deviceTokenHash: text("device_token_hash").primaryKey(),
@@ -144,15 +149,24 @@ export const accessDevices = sqliteTable(
   (table) => [index("idx_access_devices_banned_at").on(table.bannedAt)],
 );
 
-export const accessLoginChallenges = sqliteTable(
+export const accessLoginChallenges = pgTable(
   "access_login_challenges",
   {
     tokenHash: text("token_hash").primaryKey(),
     deviceHash: text("device_hash").notNull(),
-    passwordHashFingerprint: text("password_hash_fingerprint").notNull(),
     createdAt: text("created_at").notNull(),
     expiresAt: text("expires_at").notNull(),
     consumedAt: text("consumed_at"),
   },
   (table) => [index("idx_access_login_challenges_expires_at").on(table.expiresAt)],
 );
+
+export const documentAssets = pgTable('document_assets', {
+  id: text('id').primaryKey(), documentId: text('document_id').notNull().references(() => orderDocuments.id),
+  kind: text('kind').notNull(), objectKey: text('object_key').notNull(), sha256: text('sha256').notNull(),
+  fileSize: integer('file_size').notNull(), mimeType: text('mime_type').notNull(), createdAt: text('created_at').notNull(),
+}, table => [uniqueIndex('idx_document_assets_key').on(table.objectKey),uniqueIndex('idx_document_assets_kind').on(table.documentId,table.kind)]);
+
+export const documentGenerationJobs = pgTable('document_generation_jobs',{
+ id:text('id').primaryKey(),objectKeys:jsonb('object_keys').$type<string[]>().notNull(),status:text('status').notNull(),createdAt:text('created_at').notNull(),updatedAt:text('updated_at').notNull(),
+},table=>[index('idx_generation_jobs_status_created').on(table.status,table.createdAt)]);
