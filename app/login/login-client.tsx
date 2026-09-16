@@ -17,10 +17,10 @@ export default function LoginClient() {
   useEffect(() => {
     fetch("/api/access/device", { cache: "no-store", referrerPolicy: "no-referrer" })
       .then(async (response) => {
-        const data = await response.json() as { blocked?: boolean };
+        const data = await response.json() as { blocked?: boolean; error?: string };
         setBlocked(Boolean(data.blocked));
         setReady(response.ok);
-        if (!response.ok && !data.blocked) setError("تعذر تجهيز الدخول. أعد تحميل الصفحة.");
+        if (!response.ok && !data.blocked) setError(data.error || "خدمة الدخول غير متاحة مؤقتًا. يرجى التواصل مع مسؤول المنصة.");
       })
       .catch(() => setError("تعذر تجهيز الدخول. أعد تحميل الصفحة."));
   }, []);

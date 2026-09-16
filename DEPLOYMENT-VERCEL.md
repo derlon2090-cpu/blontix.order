@@ -1,6 +1,6 @@
 # Deployment on Vercel
 
-The Vercel build uses native Next.js through `npm run build:vercel`; `vercel.json` selects `.next`. The separate vinext build remains available for Cloudflare.
+The Vercel build uses native Next.js through `npm run build:vercel`; `vercel.json` selects `.next`. It applies pending Turso migrations before building and stops deployment if they fail. Vercel environments must have both Turso variables configured. The separate vinext build remains available for Cloudflare.
 
 1. Create a Turso database and a database-scoped authentication token. Connect a **private** Vercel Blob store to the Vercel project.
 2. Set `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `BLOB_READ_WRITE_TOKEN`, `DOCUMENTS_ACCESS_PASSWORD_HASH` and `SESSION_SECRET` in Vercel for the intended environments. The access hash must be Argon2id; keep `$` characters intact when pasting the value into the dashboard. Never use the plaintext access code as an environment variable or commit secrets.
