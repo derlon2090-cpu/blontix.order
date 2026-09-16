@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,17 +13,27 @@ export default function LoginClient() {
   const [loading, setLoading] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [error, setError] = useState("");
+  const [preparing,setPreparing]=useState(true);
 
-  useEffect(() => {
-    fetch("/api/access/device", { cache: "no-store", referrerPolicy: "no-referrer" })
-      .then(async (response) => {
-        const data = await response.json() as { blocked?: boolean; error?: string };
-        setBlocked(Boolean(data.blocked));
-        setReady(response.ok);
-        if (!response.ok && !data.blocked) setError(data.error || "خدمة الدخول غير متاحة مؤقتًا. يرجى التواصل مع مسؤول المنصة.");
-      })
-      .catch(() => setError("تعذر تجهيز الدخول. أعد تحميل الصفحة."));
-  }, []);
+  const prepare=useCallback(async(signal:AbortSignal)=>{
+    try{
+      const response=await fetch("/api/access/device",{cache:"no-store",referrerPolicy:"no-referrer",signal});
+      const data=await response.json() as {blocked?:boolean;error?:string};
+      if(signal.aborted)return;
+      setBlocked(data.blocked===true);setReady(response.ok && data.blocked!==true);
+      if(!response.ok && data.blocked!==true)setError(data.error || "خدمة الدخول غير متاحة مؤقتًا. انتظر قليلًا ثم أعد المحاولة.");
+    }catch{
+      if(signal.reason?.name!=='AbortError')setError("تعذر الاتصال بخدمة الدخول. انتظر نحو دقيقة ثم اضغط إعادة الاتصال.");
+    }finally{
+      if(signal.reason?.name!=='AbortError')setPreparing(false);
+    }
+  },[]);
+  useEffect(()=>{
+    const controller=new AbortController();
+    const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(90000)]);
+    void Promise.resolve().then(()=>{if(!signal.aborted)return prepare(signal);});
+    return ()=>controller.abort();
+  },[prepare]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!ready || blocked) return;
@@ -47,6 +57,8 @@ export default function LoginClient() {
       <Input id="access-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required maxLength={256} disabled={!ready || blocked || loading} placeholder="أدخل رمز التفعيل الخاص بك" />
       {blocked && <p role="alert" className="access-alert">تم حظر هذا المتصفح بعد ثلاث محاولات فاشلة. تواصل مع مسؤول المنصة.</p>}
       {!blocked && error && <p role="alert" className="access-alert">{error}</p>}
+      {preparing && <p role="status">جارٍ الاتصال بخدمة الدخول… قد تستغرق الخدمة نحو دقيقة للاستيقاظ.</p>}
+      {!blocked && !ready && !preparing && <Button type="button" className="access-submit" onClick={()=>{setPreparing(true);setError("");void prepare(AbortSignal.timeout(90000));}}>إعادة الاتصال</Button>}
       <Button type="submit" disabled={!ready || blocked || loading} className="access-submit">{loading ? <Loader2 className="animate-spin" /> : <LockKeyhole />} متابعة إلى البريد <ArrowLeft /></Button>
     </form>
   </AccessFrame>;
