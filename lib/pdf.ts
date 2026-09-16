@@ -30,6 +30,16 @@ function wrapRtl(text: string, font: PDFFont, size: number, maxWidth: number) {
   const lines: string[] = [];
   let current = "";
   for (const word of words) {
+    if (font.widthOfTextAtSize(visualRtl(word), size) > maxWidth) {
+      if (current) { lines.push(current); current = ""; }
+      for (const character of word) {
+        const candidate = current + character;
+        if (current && font.widthOfTextAtSize(visualRtl(candidate), size) > maxWidth) {
+          lines.push(current); current = character;
+        } else { current = candidate; }
+      }
+      continue;
+    }
     const candidate = current ? `${current} ${word}` : word;
     if (font.widthOfTextAtSize(visualRtl(candidate), size) <= maxWidth || !current) current = candidate;
     else { lines.push(current); current = word; }
@@ -146,14 +156,18 @@ export async function generateOrderPdf(args: {
   page.drawRectangle({ x: 447, y: 185, width: 114, height: 207, color: pale, borderColor: blue, borderWidth: 0.9 });
   drawRtl(page, "التحقق من أصالة المستند", 552, 373, semibold, 8.3, navy);
   page.drawImage(qrImage, { x: 468, y: 272, width: 72, height: 72 });
-  page.drawText(reference, { x: 460, y: 254, size: 5.8, font: semibold, color: navy });
-  page.drawText(`V${documentVersion} · ${verificationId}`, { x: 460, y: 242, size: 5.6, font: regular, color: muted });
+  wrapRtl(reference, semibold, 5.8, 94).slice(0, 2).forEach((item, index) => {
+    page.drawText(item, { x: 458, y: 254 - index * 7, size: 5.8, font: semibold, color: navy });
+  });
+  page.drawText(`V${documentVersion} · ${verificationId}`, { x: 460, y: 238, size: 5.6, font: regular, color: muted });
   drawRtl(page, "بصمة بيانات المستند", 552, 231, regular, 5.7, muted);
   page.drawText(shortFingerprint(snapshotHash), { x: 460, y: 220, size: 5.4, font: semibold, color: navy });
   wrapRtl("يمكن التحقق من أصالة المستند ومطابقته للنسخة المسجلة إلكترونيًا.", regular, 5.9, 94)
-    .slice(0, 3)
+    .slice(0, 2)
     .forEach((item, index) => drawRtl(page, item, 552, 207 - index * 7, regular, 5.7, muted));
-  page.drawText(new URL(verificationUrl).hostname, { x: 458, y: 195, size: 5.3, font: regular, color: navy });
+  wrapRtl(new URL(verificationUrl).hostname, regular, 5.3, 94).slice(0, 2).forEach((item, index) => {
+    page.drawText(item, { x: 458, y: 194 - index * 7, size: 5.3, font: regular, color: navy });
+  });
 
   page.drawLine({ start: { x: 34, y: 166 }, end: { x: 561, y: 166 }, thickness: 0.7, color: navy });
   drawRtl(page, "هذا المستند تم إنشاؤه إلكترونيًا لتوثيق بيانات الطلب والشروط التي وافق عليها العميل قبل إتمام عملية الشراء.", 561, 149, regular, 7.1, muted);
