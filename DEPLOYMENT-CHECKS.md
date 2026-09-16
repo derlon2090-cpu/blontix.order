@@ -23,3 +23,9 @@ The isolated transport check passed for absent cookies (zero upstream calls), ne
 ## Render module resolution
 
 The supplied Render build log fails to resolve `@/components/ui/button` and `@/components/ui/input`. Both files, their label/utils dependencies and tsconfig.json are already tracked in Git with exact lowercase paths. The webpack configuration now explicitly maps `@` to the project root; TypeScript also has an explicit root baseUrl with the existing paths mapping. This prevents webpack application aliases from depending only on implicit tsconfig discovery. A production-mode backend build and frontend build passed after the change. The supplied log alone does not establish which commit or dashboard build settings produced the original failure; deploy the latest main commit with the documented build command and clear the old build cache.
+
+## Missing PostCSS in production installation
+
+The next supplied Render log reports `Cannot find module '@tailwindcss/postcss'`. That package was classified as development-only. The CSS/TypeScript build requirements now belong to dependencies, retaining all package versions and lockfile package inventory. ESLint and Drizzle Kit remain development-only. Only the Drizzle generator config is excluded from the application TypeScript build; no schema, migration or provider implementation was changed.
+
+Verification: `NODE_ENV=production npm ci --omit=dev --no-audit --no-fund` completed successfully, installing 332 packages. Required PostCSS/Tailwind/animation CSS/TypeScript packages were present, while ESLint and Drizzle Kit were absent. `NODE_ENV=production npm run build` passed with that installation. Local npm reported the known Node 24 versus target Node 22 engine warning and Windows cleanup warnings for unused optional WASM folders; the install exited zero. No database or storage operations were performed. This verifies the supplied build failure, not live Render startup or login.

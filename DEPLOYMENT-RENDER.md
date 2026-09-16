@@ -7,6 +7,8 @@ Deploy this repository's `main` branch to the existing Node web service at https
 - Start command: `npm start`.
 - Health check path: `/api/health`.
 
+The stylesheet/TypeScript build toolchain is included in `dependencies`, so a production-only npm installation still has `@tailwindcss/postcss`, Tailwind CSS, animation CSS, TypeScript and required type packages. Development-only ESLint and Drizzle schema generation remain in `devDependencies`. The schema-generator config is excluded from the application's TypeScript build; migration execution and database files are unchanged. Keep the documented build command with `--include=dev` for the service.
+
 Set all nine variables in [.env.example](.env.example) on the web service. Use the external Neon PostgreSQL connection URL with its required TLS settings. No Render Database or Disk is created or required. Keep the R2 bucket private and grant its S3 credentials object read/write/delete and bucket-head access. No secrets belong in Git, frontend variables, or deployment command arguments. Paste the Argon2id PHC hash literally into Render; do not escape its `$` characters there.
 
 `npm start` validates configuration, performs a real PostgreSQL `SELECT 1` and R2 `HeadBucket`, applies PostgreSQL migrations under a session advisory lock, and then starts Next.js. An unavailable provider prevents startup. `npm run db:migrate` also applies migrations explicitly; re-running it is safe. The old SQLite migrations are historical only; `drizzle-postgres` is the production migration folder. Existing SQLite data is not automatically imported into PostgreSQL.
