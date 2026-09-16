@@ -1,5 +1,11 @@
 # Node deployment checks — 2026-09-16
 
+## Authenticator third step
+
+Email delivery was cancelled before publication. Three-step sign-in now requires a time-based authenticator code after password and administrator-email confirmation. The additive 0003 authentication migration preserves document tables and invalidates legacy sessions through the required totp_verified_at field. AUTH_TOTP_SECRET belongs on Render only; no real enrollment secret is committed.
+
+The isolated tests/totp-access.mjs check passed RFC 6238 vectors, required step ordering, no session issuance at email confirmation, accepted TOTP session, rejection of legacy/banned sessions, replay prevention, a mixed-step three-incorrect-attempt ban, concurrent single-use and fail-closed missing configuration. Fixtures were in memory; no live PostgreSQL/R2 operations or email sends occurred. npm run build passed with TypeScript checks and the new /login/2fa and /api/access/2fa routes. The existing broader PostgreSQL workflow was updated for the third step but was not rerun for this change. Live deployment and enrollment remain unverified.
+
 ## Final-document integrity layer
 
 This later update adds visible PDF notices, snapshot-bound references, faint reference watermarks, Info/XMP metadata and verification-page integrity details. See ANTI-TAMPER.md for the distinction between snapshot and final-file fingerprints. It does not change database schema/migrations, providers, encryption or audit implementation. Historical masters are not rewritten. Both npm run build and npm run build:vercel completed successfully with TypeScript checks.

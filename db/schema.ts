@@ -123,6 +123,7 @@ export const accessSessions = pgTable(
     createdAt: text("created_at").notNull(),
     expiresAt: text("expires_at").notNull(),
     revokedAt: text("revoked_at"),
+    totpVerifiedAt: text("totp_verified_at"),
   },
   (table) => [index("idx_access_sessions_expires_at").on(table.expiresAt)],
 );
@@ -157,9 +158,15 @@ export const accessLoginChallenges = pgTable(
     createdAt: text("created_at").notNull(),
     expiresAt: text("expires_at").notNull(),
     consumedAt: text("consumed_at"),
+    emailVerifiedAt: text("email_verified_at"),
   },
   (table) => [index("idx_access_login_challenges_expires_at").on(table.expiresAt)],
 );
+
+export const accessTotpState = pgTable('access_totp_state', {
+  keyId: text('key_id').primaryKey(),
+  lastStep: text('last_step').notNull().default('-1'),
+});
 
 export const documentAssets = pgTable('document_assets', {
   id: text('id').primaryKey(), documentId: text('document_id').notNull().references(() => orderDocuments.id),

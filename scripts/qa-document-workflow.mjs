@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
+import {totpAtStep} from '../lib/totp.ts';
 
 const base = process.env.QA_BASE_URL || "http://127.0.0.1:5174";
 const password = process.env.QA_PASSWORD;
@@ -31,10 +32,16 @@ const phaseTwo = await fetch(`${base}/api/access/email`, {
   body: JSON.stringify({ email: "blontix.official@gmail.com" }),
 });
 assert.equal(phaseTwo.status, 200, "admin email must pass second stage");
-const sessionCookie = phaseTwo.headers.getSetCookie().find((value) => value.startsWith("__Host-blontix_session="));
+assert.equal(phaseTwo.headers.getSetCookie().length,0,'email must not issue a session');
+const phaseThree = await fetch(`${base}/api/access/2fa`, {
+  method: 'POST', headers: {'content-type':'application/json',cookie:`${deviceCookie}; ${preAuthCookie}`,'cf-connecting-ip':ip},
+  body: JSON.stringify({code:totpAtStep(process.env.AUTH_TOTP_SECRET,Math.floor(Date.now()/30000))}),
+});
+assert.equal(phaseThree.status,200,'authenticator code must pass third stage');
+const sessionCookie = phaseThree.headers.getSetCookie().find((value) => value.startsWith("__Host-blontix_session="));
 assert.match(sessionCookie || "", /Max-Age=43200/);
 const auth = { cookie: `${deviceCookie}; ${sessionCookie.split(";")[0]}`, "cf-connecting-ip": ip };
-console.log("QA: two-stage login passed.");
+console.log("QA: three-stage login passed.");
 
 const bannedIp = `qa-banned-${randomUUID()}`;
 const bannedDeviceResponse = await fetch(`${base}/api/access/device`, { headers: { "cf-connecting-ip": bannedIp } });

@@ -8,6 +8,7 @@ import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import {encodeTotpSecret,totpAtStep} from '../lib/totp.ts';
 
 // Only newly created isolated PostgreSQL schemas are used; never modify existing tables.
 const admin = new pg.Client({ connectionString: process.env.DATABASE_URL });
@@ -20,6 +21,7 @@ const url = new URL(process.env.DATABASE_URL); url.searchParams.set('options', '
 const password = randomBytes(32).toString('base64url');
 const env = { ...process.env, DATABASE_URL: url.href, DATABASE_MIGRATIONS_SCHEMA: databaseName, DOCUMENTS_ACCESS_PASSWORD_HASH: await argon2.hash(password, { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 }), SESSION_SECRET: randomBytes(32).toString('base64url'), DATA_ENCRYPTION_KEY: randomBytes(32).toString('base64url'), AUDIT_HMAC_KEY: randomBytes(32).toString('base64url'), R2_ACCOUNT_ID: randomBytes(16).toString('hex'), R2_ACCESS_KEY_ID: 'isolated-qa-access', R2_SECRET_ACCESS_KEY: randomBytes(32).toString('hex'), R2_BUCKET_NAME: 'isolated-qa-bucket', BLONTIX_ISOLATED_QA: '1', NODE_ENV: 'test', __NEXT_PROCESSED_ENV: 'true', QA_PASSWORD: password, QA_BASE_URL: 'http://127.0.0.1:5174', NODE_OPTIONS: '--import ./tests/support/register.mjs', QA_S3_SDK_ENTRY: createRequire(import.meta.url).resolve('@aws-sdk/client-s3'), NEXT_TELEMETRY_DISABLED: '1' };
 const objects = new Map(); let failUploads = false; let failBucket = false;
+env.AUTH_TOTP_SECRET=encodeTotpSecret(randomBytes(32));
 const storage = createServer(async (req, res) => {
   const key = decodeURIComponent(new URL(req.url, 'http://qa').pathname).replace(/^\//, '').replace(new RegExp('^' + env.R2_BUCKET_NAME + '/?'), '');
   if (!key && req.method === 'HEAD') { res.writeHead(failBucket ? 503 : 200); res.end(); return; }
@@ -59,7 +61,7 @@ async function start() {
 async function stop() { if (server && server.exitCode === null) { const exited = new Promise(done => server.once('exit', done)); server.kill(); await exited; } }
 try {
   await command(['scripts/migrate-postgres.mjs']); await command(['scripts/migrate-postgres.mjs']);
-  assert.equal(Number((await db.query('SELECT count(*) FROM ' + databaseName + '.__drizzle_migrations')).rows[0].count), 3);
+  assert.equal(Number((await db.query('SELECT count(*) FROM ' + databaseName + '.__drizzle_migrations')).rows[0].count), 4);
   console.log('PASS: real PostgreSQL migrations, repeatable without duplicate execution.');
   assert.match(await command(['scripts/start-production.mjs'],{DATABASE_URL:'postgresql://isolated:isolated@127.0.0.1:1/isolated'},1),/Database connection failed/);
   failBucket=true;
@@ -80,7 +82,18 @@ try {
     const r = await fetch(env.QA_BASE_URL + '/api/access/device'); const device = r.headers.getSetCookie()[0].split(';')[0];
     const p = await fetch(env.QA_BASE_URL + '/api/access/login', { method: 'POST', headers: { cookie: device, 'content-type': 'application/json' }, body: JSON.stringify({ password }) }); assert.equal(p.status, 200);
     const e = await fetch(env.QA_BASE_URL + '/api/access/email', { method: 'POST', headers: { cookie: device + '; ' + p.headers.getSetCookie()[0].split(';')[0], 'content-type': 'application/json' }, body: JSON.stringify({ email: 'blontix.official@gmail.com' }) }); assert.equal(e.status, 200);
-    return { cookie: device + '; ' + e.headers.getSetCookie().find(v => v.startsWith('__Host-blontix_session=')).split(';')[0] };
+    const preAuth=device + '; ' + p.headers.getSetCookie()[0].split(';')[0];
+    // A previous QA login can have consumed the current shared time step.
+    let t;
+    for(let attempt=0;attempt<2;attempt++) {
+      t=await fetch(env.QA_BASE_URL + '/api/access/2fa',{method:'POST',headers:{cookie:preAuth,'content-type':'application/json'},body:JSON.stringify({code:totpAtStep(env.AUTH_TOTP_SECRET,Math.floor(Date.now()/30000))})});
+      if(t.status===200)break;
+      const result=await t.json();
+      if(!String(result.error).includes('مسبقًا'))throw new Error(result.error);
+      await new Promise(done=>setTimeout(done,30000-Date.now()%30000+100));
+    }
+    assert.equal(t.status,200);
+    return { cookie: device + '; ' + t.headers.getSetCookie().find(v => v.startsWith('__Host-blontix_session=')).split(';')[0] };
   }
   const auth = await login();
   async function persistence() {

@@ -1,5 +1,5 @@
 import { env } from "@/lib/runtime";
-import { accessDevice, clearedPreAuthCookie, constantTimeTextEqual, consumePreAuthChallenge, createDocumentSession, ipLoginLocked, preAuthChallenge, recordAccessFailure, resetAccessFailures } from "@/lib/access";
+import { accessDevice, constantTimeTextEqual, ipLoginLocked, preAuthChallenge, recordAccessFailure } from "@/lib/access";
 
 const ADMIN_EMAIL = "blontix.official@gmail.com";
 const responseHeaders = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" };
@@ -16,12 +16,9 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({})) as { email?: unknown };
     const email = typeof body.email === "string" && body.email.length <= 254 ? body.email.trim().toLowerCase() : "";
     if (!constantTimeTextEqual(email, ADMIN_EMAIL)) return failure(await recordAccessFailure(request, challenge.deviceHash));
-    if (!await consumePreAuthChallenge(challenge.tokenHash)) return failure();
-    await resetAccessFailures(request, challenge.deviceHash);
-    const sessionCookie = await createDocumentSession(challenge.deviceHash);
-    const headers = new Headers(responseHeaders);
-    headers.append("Set-Cookie", sessionCookie);
-    headers.append("Set-Cookie", clearedPreAuthCookie());
-    return Response.json({ ok: true }, { headers });
+    const now = new Date().toISOString();
+    const marked = await env.DB.prepare('UPDATE access_login_challenges SET email_verified_at = ? WHERE token_hash = ? AND consumed_at IS NULL AND expires_at > ?').bind(now, challenge.tokenHash, now).run();
+    if (marked.meta.changes !== 1) return failure();
+    return Response.json({ next: '/login/2fa' }, { headers: responseHeaders });
   } catch { return failure(); }
 }

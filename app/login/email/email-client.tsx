@@ -18,11 +18,11 @@ export default function EmailClient() {
     setLoading(true); setError("");
     try {
       const response = await fetch("/api/access/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }), cache: "no-store", referrerPolicy: "no-referrer" });
-      const data = await response.json() as { ok?: boolean; error?: string; blocked?: boolean };
+      const data = await response.json() as { next?: string; error?: string; blocked?: boolean };
       setEmail("");
       if (data.blocked) { setBlocked(true); throw new Error(data.error); }
-      if (!response.ok || !data.ok) throw new Error(data.error || "تعذر تسجيل الدخول. تحقق من البيانات المدخلة.");
-      window.location.assign("/");
+      if (!response.ok || data.next !== '/login/2fa') throw new Error(data.error || "تعذر تسجيل الدخول. تحقق من البيانات المدخلة.");
+      window.location.assign('/login/2fa');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "تعذر تسجيل الدخول.");
       setEmail("");
@@ -35,7 +35,7 @@ export default function EmailClient() {
       <Input id="admin-email" type="email" inputMode="email" autoComplete="username" dir="ltr" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} disabled={blocked || loading} placeholder="name@example.com" />
       {blocked && <p role="alert" className="access-alert">تم حظر هذا المتصفح بعد ثلاث محاولات فاشلة. تواصل مع مسؤول المنصة.</p>}
       {!blocked && error && <p role="alert" className="access-alert">{error}</p>}
-      <Button type="submit" disabled={blocked || loading} className="access-submit">{loading ? <Loader2 className="animate-spin" /> : <Mail />} دخول المنصة</Button>
+      <Button type="submit" disabled={blocked || loading} className="access-submit">{loading ? <Loader2 className="animate-spin" /> : <Mail />} متابعة إلى المصادقة الثنائية</Button>
       <a href="/login" className="access-back"><ArrowRight className="size-4" /> العودة إلى رمز التفعيل</a>
     </form>
   </AccessFrame>;

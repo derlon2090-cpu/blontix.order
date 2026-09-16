@@ -41,7 +41,7 @@ export async function verifyAccessPassword(password: string) {
   try { return await argon2.verify(normalized, password); } catch { throw new Error('ACCESS_HASH_INVALID'); }
 }
 
-async function hmac(value: string) {
+export async function hmac(value: string) {
   const secret = env.SESSION_SECRET;
   if (!secret || fromBase64Url(secret).length < 32) throw new Error("SESSION_NOT_CONFIGURED");
   const key = await crypto.subtle.importKey("raw", fromBase64Url(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -81,21 +81,20 @@ export async function ensureAccessDevice(request: Request) {
   return { deviceHash, failedCount: 0, banned: false, cookie: secureCookie(DEVICE_COOKIE_NAME, token, 365 * 24 * 60 * 60) };
 }
 
-export async function recordAccessFailure(request: Request, deviceHash: string) {
-  if (!env.DB) throw new Error("DB_UNAVAILABLE");
+export async function recordAccessFailure(request: Request, deviceHash: string, db = env.DB) {
   const now = new Date().toISOString();
-  await env.DB.prepare("UPDATE access_devices SET failed_count = failed_count + 1, banned_at = CASE WHEN failed_count + 1 >= 3 THEN ? ELSE banned_at END, last_seen_at = ? WHERE device_token_hash = ? AND banned_at IS NULL")
+  await db.prepare("UPDATE access_devices SET failed_count = failed_count + 1, banned_at = CASE WHEN failed_count + 1 >= 3 THEN ? ELSE banned_at END, last_seen_at = ? WHERE device_token_hash = ? AND banned_at IS NULL")
     .bind(now, now, deviceHash).run();
   const subjectHash = await loginSubjectHash(request);
-  const previous = await env.DB.prepare("SELECT failed_count, updated_at FROM access_login_attempts WHERE subject_hash = ?")
+  const previous = await db.prepare("SELECT failed_count, updated_at FROM access_login_attempts WHERE subject_hash = ?")
     .bind(subjectHash).first<{ failed_count: number; updated_at: string }>();
   const inWindow = previous && Date.now() - new Date(previous.updated_at).getTime() < 60 * 60 * 1000;
   const failedCount = (inWindow ? previous.failed_count : 0) + 1;
   const lockedUntil = failedCount >= 3 ? new Date(Date.now() + 60 * 60 * 1000).toISOString() : null;
-  await env.DB.prepare("INSERT INTO access_login_attempts (subject_hash, failed_count, locked_until, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(subject_hash) DO UPDATE SET failed_count = excluded.failed_count, locked_until = excluded.locked_until, updated_at = excluded.updated_at")
+  await db.prepare("INSERT INTO access_login_attempts (subject_hash, failed_count, locked_until, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(subject_hash) DO UPDATE SET failed_count = excluded.failed_count, locked_until = excluded.locked_until, updated_at = excluded.updated_at")
     .bind(subjectHash, failedCount, lockedUntil, now).run();
-  const current = await accessDevice(request);
-  return Boolean(current?.banned);
+  const current = await db.prepare('SELECT banned_at FROM access_devices WHERE device_token_hash = ?').bind(deviceHash).first<{banned_at: string | null}>();
+  return Boolean(current?.banned_at);
 }
 
 export async function ipLoginLocked(request: Request) {
@@ -157,7 +156,7 @@ export async function sessionIsValid(request: Request) {
   const device = await accessDevice(request);
   if (!device || device.banned) return false;
   const tokenHash = await hmac(`session:${token}`);
-  const row = await env.DB.prepare("SELECT device_hash FROM access_sessions WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?").bind(tokenHash, new Date().toISOString()).first<{ device_hash: string }>();
+  const row = await env.DB.prepare("SELECT device_hash FROM access_sessions WHERE token_hash = ? AND totp_verified_at IS NOT NULL AND revoked_at IS NULL AND expires_at > ?").bind(tokenHash, new Date().toISOString()).first<{ device_hash: string }>();
   return Boolean(row && row.device_hash === device.deviceHash);
 }
 
@@ -166,12 +165,11 @@ export async function requireDocumentSession(request: Request) {
   return "internal";
 }
 
-export async function createDocumentSession(deviceHash: string) {
-  if (!env.DB) throw new Error("DB_UNAVAILABLE");
+export async function createDocumentSession(deviceHash: string, db = env.DB) {
   const token = freshToken();
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + SESSION_SECONDS * 1000);
-  await env.DB.prepare("INSERT INTO access_sessions (token_hash, device_hash, created_at, expires_at) VALUES (?, ?, ?, ?)").bind(await hmac(`session:${token}`), deviceHash, createdAt.toISOString(), expiresAt.toISOString()).run();
+  await db.prepare("INSERT INTO access_sessions (token_hash, device_hash, created_at, expires_at, totp_verified_at) VALUES (?, ?, ?, ?, ?)").bind(await hmac(`session:${token}`), deviceHash, createdAt.toISOString(), expiresAt.toISOString(), createdAt.toISOString()).run();
   return secureCookie(SESSION_COOKIE_NAME, token, SESSION_SECONDS);
 }
 
