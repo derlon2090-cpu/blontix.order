@@ -22,7 +22,7 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
     const row = await env.DB.prepare(
       `SELECT id, order_number, product_name, price, masked_phone, document_reference,
         document_version, finalized_at, lifecycle_status, verification_id, pdf_sha256, snapshot_hash,
-        signature_status, timestamp_status
+        signature_status, timestamp_status, pdf_key
        FROM order_documents WHERE verification_token_hash = ?`
     ).bind(await sha256Hex(token)).first<Record<string, unknown>>();
     if (!row) {
@@ -38,6 +38,7 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
     ).bind(String(row.order_number)).first<{ latest_version: number }>();
     const lifecycle = String(row.lifecycle_status);
     const status = lifecycle === "cancelled" ? "cancelled" : Number(latest?.latest_version ?? row.document_version) > Number(row.document_version) ? "superseded" : "original";
+    const master=await env.BUCKET.head(String(row.pdf_key));
     await recordVerification(String(row.id), status);
     return Response.json({
       status,
@@ -51,6 +52,8 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
       issuedAt: row.finalized_at,
       verificationId: row.verification_id,
       documentFingerprint: shortFingerprint(String(row.pdf_sha256)),
+      documentSha256: row.pdf_sha256,
+      masterAvailable: Boolean(master),
       snapshotFingerprint: shortFingerprint(String(row.snapshot_hash)),
     }, { headers });
   } catch (error) {

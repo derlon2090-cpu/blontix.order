@@ -6,6 +6,9 @@ export const DIGITAL_POLICY =
   "بعد نجاح التفعيل لا يمكن استرجاع أو استبدال المنتج، مع مراعاة الحقوق التي تكفلها الأنظمة المعمول بها.";
 
 export type OrderSnapshot = {
+  documentReference?: string;
+  documentVersion?: number;
+  verificationId?: string;
   orderNumber: string;
   customerName: string;
   customerPhone: string;

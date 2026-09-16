@@ -5,6 +5,8 @@ import { getFontBytes } from "@/lib/pdf-assets";
 import type { OrderSnapshot } from "./order-document";
 import { shortFingerprint } from "./security";
 import {pdfTextRuns} from './pdf-text';
+import {addIntegrityMetadata} from './pdf-integrity';
+import {INTEGRITY_NOTICE_TITLE,INTEGRITY_NOTICE,AUTOMATION_NOTICE_TITLE,AUTOMATION_NOTICE,QR_INTEGRITY_NOTICE} from './document-integrity';
 
 const navy = rgb(11 / 255, 47 / 255, 85 / 255);
 const blue = rgb(47 / 255, 111 / 255, 168 / 255);
@@ -87,7 +89,11 @@ export async function generateOrderPdf(args: {
   documentVersion: number;
   snapshotHash: string;
 }) {
-  const { snapshot, reference, generatedAt, imageBytes, logoBytes, verificationUrl, verificationId, documentVersion, snapshotHash } = args;
+  const { snapshot, generatedAt, imageBytes, logoBytes, verificationUrl, snapshotHash } = args;
+  if((snapshot.documentReference!==undefined && snapshot.documentReference!==args.reference)||(snapshot.documentVersion!==undefined && snapshot.documentVersion!==args.documentVersion)||(snapshot.verificationId!==undefined && snapshot.verificationId!==args.verificationId))throw new Error('Document snapshot identity mismatch');
+  const reference=snapshot.documentReference ?? args.reference;
+  const verificationId=snapshot.verificationId ?? args.verificationId;
+  const documentVersion=snapshot.documentVersion ?? args.documentVersion;
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(documentFontkit);
   const [regularBytes, semiboldBytes] = await Promise.all([
@@ -160,21 +166,29 @@ export async function generateOrderPdf(args: {
   page.drawText(`V${documentVersion} · ${verificationId}`, { x: 460, y: 238, size: 5.6, font: regular, color: muted });
   drawRtl(page, "بصمة بيانات المستند", 552, 231, regular, 5.7, muted);
   page.drawText(shortFingerprint(snapshotHash), { x: 460, y: 220, size: 5.4, font: semibold, color: navy });
-  wrapRtl("يمكن التحقق من أصالة المستند ومطابقته للنسخة المسجلة إلكترونيًا.", regular, 5.9, 94)
-    .slice(0, 2)
-    .forEach((item, index) => drawRtl(page, item, 552, 207 - index * 7, regular, 5.7, muted));
+  const qrNotice=wrapRtl(QR_INTEGRITY_NOTICE,regular,5.7,94);
+  if(qrNotice.length>3)throw new Error('QR integrity notice overflow');
+  qrNotice.forEach((item,index)=>drawRtl(page,item,552,207-index*7,regular,5.7,muted));
 
-  page.drawLine({ start: { x: 34, y: 166 }, end: { x: 561, y: 166 }, thickness: 0.7, color: navy });
-  drawRtl(page, "هذا المستند تم إنشاؤه إلكترونيًا لتوثيق بيانات الطلب والشروط التي وافق عليها العميل قبل إتمام عملية الشراء.", 561, 149, regular, 7.1, muted);
-  drawRtl(page, "للتحقق من صحة المستند، امسح رمز QR وتأكد أن الصفحة تفتح على النطاق الرسمي للمنصة.", 561, 136, regular, 6.6, muted);
-  page.drawText(`Document Reference: ${reference} · V${documentVersion} · Verification ID: ${verificationId}`, { x: 34, y: 119, size: 6.2, font: regular, color: muted });
-  page.drawText(`${reference} · V${documentVersion} · ${verificationId}`, { x: 198, y: 97, size: 6, font: semibold, color: navy, opacity: 0.78 });
-  for (let x = 34; x < 561; x += 26) page.drawRectangle({ x, y: 86, width: 13, height: 1.2, color: blue, opacity: 0.06 });
-  drawRtl(page, `تاريخ ووقت الإنشاء: ${new Date(generatedAt).toLocaleString("ar-SA")} · GMT+3`, 561, 119, regular, 6.2, muted);
-
-  pdf.setTitle(`Order Documentation ${reference}`);
-  pdf.setSubject("Digital product purchase and delivery acknowledgment");
-  pdf.setCreator("blontix Order Documentation Platform");
-  pdf.setCreationDate(new Date(generatedAt));
+  // Visible decorative watermark, painted over the body and outside the QR.
+  // This is a version identifier, not a hidden instruction to any processor.
+  const watermark=`ORIGINAL VERIFIED DOCUMENT • ${reference}`;
+  for(const y of [738,628,568,508,370,306,228])for(const x of [38,241]){
+    wrapRtl(watermark,regular,5.2,194).forEach((text,index)=>page.drawText(text,{x,y:y-index*6.5,font:regular,size:5.2,color:blue,opacity:0.055}));
+  }
+  page.drawRectangle({x:34,y:99,width:527,height:75,color:pale,borderColor:line,borderWidth:0.65});
+  drawRtl(page,INTEGRITY_NOTICE_TITLE,547,160,semibold,8.4,navy);
+  const integrityLines=wrapRtl(INTEGRITY_NOTICE,regular,7.1,499);
+  if(integrityLines.length>4)throw new Error('Document integrity notice overflow');
+  integrityLines.forEach((text,index)=>drawRtl(page,text,547,147-index*10,regular,7.1));
+  drawRtl(page,'أي تعديل على الملف ينتج بصمة مختلفة. بصمة الملف النهائي متاحة عبر التحقق باستخدام QR.',547,106,regular,6.2,muted);
+  drawRtl(page,AUTOMATION_NOTICE_TITLE,561,88,semibold,6.8,navy);
+  const automationLines=wrapRtl(AUTOMATION_NOTICE,regular,6.2,527);
+  if(automationLines.length>3)throw new Error('Automation footer notice overflow');
+  automationLines.forEach((text,index)=>drawRtl(page,text,561,77-index*9,regular,6.2,muted));
+  page.drawText(`Document Reference: ${reference} · V${documentVersion} · Verification ID: ${verificationId}`,{x:34,y:41,size:6.2,font:regular,color:muted});
+  drawRtl(page,`تاريخ ووقت الإنشاء: ${new Date(generatedAt).toLocaleString('ar-SA')} · GMT+3`,561,28,regular,6.2,muted);
+  for(let x=34;x<561;x+=26)page.drawRectangle({x,y:18,width:13,height:1.2,color:blue,opacity:0.06});
+  addIntegrityMetadata(pdf,{reference,verificationId,version:documentVersion,snapshotHash,generatedAt});
   return pdf.save();
 }

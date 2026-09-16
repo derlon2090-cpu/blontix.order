@@ -2,6 +2,7 @@ import {sha256Hex} from '@/lib/order-document';
 import { env } from "@/lib/runtime";
 import { sha256Bytes } from "@/lib/order-document";
 import { enforceVerificationRateLimit, recordVerification } from "@/lib/verification";
+import {FILE_MISMATCH_NOTICE} from '@/lib/document-integrity';
 
 export async function POST(request: Request, context: { params: Promise<{ token: string }> }) {
   const headers = {
@@ -27,7 +28,7 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     const uploadedHash = await sha256Bytes(new Uint8Array(await file.arrayBuffer()));
     const result = uploadedHash === row.pdf_sha256 ? "match" : "mismatch";
     await recordVerification(row.id, result);
-    return Response.json({ result }, { headers });
+    return Response.json({ result, message:result==='mismatch' ? FILE_MISMATCH_NOTICE : '✓ الملف مطابق تمامًا للنسخة الأصلية المسجلة.' }, { headers });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     return Response.json({ result: message === "RATE_LIMITED" ? "rate_limited" : "unavailable" }, { status: message === "RATE_LIMITED" ? 429 : 503, headers });

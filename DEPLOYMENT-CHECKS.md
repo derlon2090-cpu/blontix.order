@@ -1,5 +1,11 @@
 # Node deployment checks — 2026-09-16
 
+## Final-document integrity layer
+
+This later update adds visible PDF notices, snapshot-bound references, faint reference watermarks, Info/XMP metadata and verification-page integrity details. See ANTI-TAMPER.md for the distinction between snapshot and final-file fingerprints. It does not change database schema/migrations, providers, encryption or audit implementation. Historical masters are not rewritten. Both npm run build and npm run build:vercel completed successfully with TypeScript checks.
+
+The isolated PDF test passed metadata/reference checks and exercised the real verification/file/master handlers with an in-memory database and storage fixture: original bytes matched; a valid modified PDF retaining the same reference failed with the requested Arabic warning; original download retained the registered SHA-256. No live PostgreSQL or R2 resources were used. Poppler rendering was visually reviewed; all eight existing visual checks passed. Decoded metadata excluded the synthetic phone, XMP parsed as XML, the automation footer was extractable and 14 repeated reference watermarks were present. Backend production build and TypeScript passed. These checks do not establish live Render/Vercel availability.
+
 Scope: deployment and request routing only. PostgreSQL migrations/schema, document handlers, QR generation, snapshots, R2 implementation, encryption, audit implementation and PDF design were not changed in this update.
 
 - `npm ci`: passed.
