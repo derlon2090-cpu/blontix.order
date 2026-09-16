@@ -1,7 +1,14 @@
 import type { NextConfig } from "next";
+import path from 'node:path';
 import {deploymentRole,backendOrigin} from './lib/deployment.mjs';
 
 const nextConfig: NextConfig = {
+  // Resolve application imports explicitly in Node/webpack deployments.
+  webpack(config) {
+    config.resolve ??= {};
+    config.resolve.alias = {...config.resolve.alias, '@':path.resolve(process.cwd())};
+    return config;
+  },
   // Only the deployment role is embedded; backend secrets are never bundled.
   env: {APP_ROLE:deploymentRole()},
   async rewrites() {
