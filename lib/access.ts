@@ -6,7 +6,7 @@ import { clientAddressHashSource } from "./security";
 const SESSION_COOKIE_NAME = "__Host-blontix_session";
 const DEVICE_COOKIE_NAME = "__Host-blontix_device";
 const PREAUTH_COOKIE_NAME = "__Host-blontix_pre_auth";
-const SESSION_SECONDS = 12 * 60 * 60;
+const SESSION_SECONDS = 24 * 60 * 60;
 const PREAUTH_SECONDS = 5 * 60;
 const encoder = new TextEncoder();
 

@@ -39,7 +39,7 @@ const phaseThree = await fetch(`${base}/api/access/2fa`, {
 });
 assert.equal(phaseThree.status,200,'authenticator code must pass third stage');
 const sessionCookie = phaseThree.headers.getSetCookie().find((value) => value.startsWith("__Host-blontix_session="));
-assert.match(sessionCookie || "", /Max-Age=43200/);
+assert.match(sessionCookie || "", /Max-Age=86400/);
 const auth = { cookie: `${deviceCookie}; ${sessionCookie.split(";")[0]}`, "cf-connecting-ip": ip };
 console.log("QA: three-stage login passed.");
 

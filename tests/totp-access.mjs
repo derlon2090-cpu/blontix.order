@@ -82,6 +82,9 @@ assert.equal(second.headers.get('set-cookie'),null,'email cannot create a sessio
 const response=await twoFactor(request(person.cookie,{code:code()}));
 assert.equal(response.status,200);
 const session=response.headers.get('set-cookie').match(/__Host-blontix_session=([A-Za-z0-9_-]+)/)[1];
+assert.match(response.headers.get('set-cookie'), /Max-Age=86400/);
+const issuedSession=state.sessions[await hmac(`session:${session}`)];
+assert.equal(Date.parse(issuedSession.expires_at)-Date.parse(issuedSession.created_at),24*60*60*1000);
 assert.equal(await sessionIsValid(new Request('https://example.invalid',{headers:{cookie:`${person.cookie}; __Host-blontix_session=${session}`}})),true);
 state.devices[person.deviceHash].banned_at=new Date().toISOString();
 assert.equal(await sessionIsValid(new Request('https://example.invalid',{headers:{cookie:`${person.cookie}; __Host-blontix_session=${session}`}})),false,'banned device cannot use an existing session');
